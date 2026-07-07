@@ -1,0 +1,18 @@
+appId: com.tktk7l9.agent-cockpit
+productName: Agent Cockpit
+directories:
+  output: release
+  buildResources: resources
+files:
+  - out/**
+asar: true
+npmRebuild: false
+mac:
+  target:
+    - target: dmg
+      arch: [arm64]
+    - target: zip
+      arch: [arm64]
+  category: public.app-category.developer-tools
+  identity: null
+  icon: resources/icon.icns
