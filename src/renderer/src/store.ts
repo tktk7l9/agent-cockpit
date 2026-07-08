@@ -5,6 +5,39 @@ import type { BackupInfo, PreviewFile, ScanResultPayload } from "../../shared/ip
 
 export type Section = EntityKind | "projects" | "backups";
 
+const SECTIONS: readonly Section[] = ["mcp", "skill", "subagent", "command", "plugin", "settings", "instructions", "projects", "backups"];
+const AGENT_FILTERS: readonly (AgentId | "all")[] = ["all", "claude", "codex", "cursor", "shared"];
+const UI_STATE_KEY = "ui-state";
+
+function isValidSection(value: unknown): value is Section {
+  return typeof value === "string" && (SECTIONS as readonly string[]).includes(value);
+}
+
+function isValidAgentFilter(value: unknown): value is AgentId | "all" {
+  return typeof value === "string" && (AGENT_FILTERS as readonly string[]).includes(value);
+}
+
+interface PersistedUiState {
+  section?: unknown;
+  agentFilter?: unknown;
+}
+
+function loadPersistedUiState(): PersistedUiState {
+  try {
+    return JSON.parse(localStorage.getItem(UI_STATE_KEY) ?? "{}") as PersistedUiState;
+  } catch {
+    return {};
+  }
+}
+
+function saveUiState(section: Section, agentFilter: AgentId | "all"): void {
+  try {
+    localStorage.setItem(UI_STATE_KEY, JSON.stringify({ section, agentFilter }));
+  } catch {
+    // localStorage unavailable — persistence is a nice-to-have, not required for the app to work
+  }
+}
+
 export interface PreviewState {
   mutation: Mutation | null; // null = backup restore
   restoreId?: string;
@@ -46,11 +79,13 @@ interface CockpitState {
   loadBackups(): Promise<void>;
 }
 
+const persistedUiState = loadPersistedUiState();
+
 export const useStore = create<CockpitState>((set, get) => ({
   data: null,
   loading: false,
-  section: "mcp",
-  agentFilter: "all",
+  section: isValidSection(persistedUiState.section) ? persistedUiState.section : "mcp",
+  agentFilter: isValidAgentFilter(persistedUiState.agentFilter) ? persistedUiState.agentFilter : "all",
   selectedId: null,
   creating: false,
   dirty: false,
@@ -66,8 +101,14 @@ export const useStore = create<CockpitState>((set, get) => ({
     set({ data, loading: false, stale: false });
   },
 
-  setSection: (section) => set({ section, selectedId: null, creating: false, dirty: false }),
-  setAgentFilter: (agentFilter) => set({ agentFilter }),
+  setSection: (section) => {
+    set({ section, selectedId: null, creating: false, dirty: false });
+    saveUiState(section, get().agentFilter);
+  },
+  setAgentFilter: (agentFilter) => {
+    set({ agentFilter });
+    saveUiState(get().section, agentFilter);
+  },
   select: (selectedId) => set({ selectedId, creating: false, dirty: false }),
   startCreate: () => set({ creating: true, selectedId: null, dirty: false }),
   stopEditing: () => set({ creating: false, selectedId: null, dirty: false }),

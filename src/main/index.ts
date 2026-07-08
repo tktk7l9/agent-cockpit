@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, screen, shell } from "electron";
 import * as os from "node:os";
 import * as path from "node:path";
 import chokidar, { type FSWatcher } from "chokidar";
@@ -9,6 +9,7 @@ import type { ProbeResult } from "../lib/mcp-probe";
 import type { FileEdit } from "../lib/model/types";
 import { mutationReadPaths, planMutation, type Mutation } from "../lib/mutations";
 import { watchPaths } from "../lib/paths";
+import { boundsVisible, type Rect } from "../lib/window-bounds";
 import { CHANNELS, type ApplyResult, type BaseHashes, type PreviewFile, type PreviewResult } from "../shared/ipc";
 import {
   applyFileEdits,
@@ -213,10 +214,23 @@ function registerIpc(): void {
   });
 }
 
+const DEFAULT_WINDOW_BOUNDS = { width: 1280, height: 820 };
+const BOUNDS_SAVE_DEBOUNCE_MS = 500;
+let boundsSaveTimer: NodeJS.Timeout | null = null;
+
+function saveWindowBounds(bounds: Rect): void {
+  const config = loadAppConfig(userData());
+  config.windowBounds = bounds;
+  saveAppConfig(userData(), config);
+}
+
 function createWindow(): void {
+  const saved = loadAppConfig(userData()).windowBounds;
+  const workAreas = screen.getAllDisplays().map((d) => d.workArea);
+  const initialBounds = saved && boundsVisible(saved, workAreas) ? saved : DEFAULT_WINDOW_BOUNDS;
+
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 820,
+    ...initialBounds,
     minWidth: 900,
     minHeight: 600,
     title: "Agent Cockpit",
@@ -233,6 +247,19 @@ function createWindow(): void {
 
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   mainWindow.webContents.on("will-navigate", (event) => event.preventDefault());
+
+  const scheduleBoundsSave = (): void => {
+    if (boundsSaveTimer) clearTimeout(boundsSaveTimer);
+    boundsSaveTimer = setTimeout(() => {
+      if (mainWindow) saveWindowBounds(mainWindow.getBounds());
+    }, BOUNDS_SAVE_DEBOUNCE_MS);
+  };
+  mainWindow.on("resize", scheduleBoundsSave);
+  mainWindow.on("move", scheduleBoundsSave);
+  mainWindow.on("close", () => {
+    if (boundsSaveTimer) clearTimeout(boundsSaveTimer);
+    if (mainWindow) saveWindowBounds(mainWindow.getBounds());
+  });
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
