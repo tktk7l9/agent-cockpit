@@ -16,6 +16,8 @@ const api: CockpitApi = {
   applyRestore: (id: string, baseHash: string | null) => ipcRenderer.invoke(CHANNELS.applyRestore, id, baseHash),
   reveal: (path: string) => ipcRenderer.invoke(CHANNELS.reveal, path),
   mcpTest: (input: McpInput, timeoutSec?: number) => ipcRenderer.invoke(CHANNELS.mcpTest, input, timeoutSec),
+  checkUpdate: () => ipcRenderer.invoke(CHANNELS.checkUpdate),
+  openReleases: () => ipcRenderer.invoke(CHANNELS.openReleases),
   onChanged: (callback: () => void) => {
     const listener = (): void => callback();
     ipcRenderer.on(CHANNELS.changed, listener);

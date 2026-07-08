@@ -40,6 +40,9 @@ export function App(): React.JSX.Element {
   const toast = useStore((s) => s.toast);
   const openPalette = useStore((s) => s.openPalette);
   const openErrors = useStore((s) => s.openErrors);
+  const updateInfo = useStore((s) => s.updateInfo);
+  const checkUpdate = useStore((s) => s.checkUpdate);
+  const dismissUpdate = useStore((s) => s.dismissUpdate);
 
   useEffect(() => {
     void refresh();
@@ -79,6 +82,25 @@ export function App(): React.JSX.Element {
           ))}
         </nav>
         <div className="sidebar-foot">
+          {updateInfo && (
+            <div className="banner banner-warn">
+              <span>New version v{updateInfo.latest} available</span>
+              <button
+                className="btn btn-small"
+                onClick={() => {
+                  void window.cockpit.openReleases();
+                  dismissUpdate();
+                }}
+              >
+                Open Releases
+              </button>
+            </div>
+          )}
+          {data && (
+            <button className="update-check" onClick={() => void checkUpdate()}>
+              v{data.version} — Check for updates
+            </button>
+          )}
           <div className="agent-filter">
             {AGENTS.map((a) => (
               <button

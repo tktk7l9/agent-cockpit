@@ -63,6 +63,8 @@ npm run build
 
 Architecture: everything that decides *what* to write lives in `src/lib` as pure functions (`FileSnapshot → FileEdit`), which is what makes the 100% coverage gate possible. `src/main` is a thin fs/IPC adapter (path allowlist, backups, atomic writes, chokidar watcher), `src/renderer` is React. The renderer only talks through one typed `contextBridge` API — `contextIsolation` on, `sandbox` on, no remote content, strict CSP.
 
+Releasing: bump `version` in `package.json`, then `npm run package` and `gh release create v<version> <dmg> <zip>` — the tag must match the version exactly, since the in-app "Check for updates" button compares against it.
+
 ## License
 
 MIT

@@ -9,8 +9,16 @@ import type { ProbeResult } from "../lib/mcp-probe";
 import type { FileEdit } from "../lib/model/types";
 import { mutationReadPaths, planMutation, type Mutation } from "../lib/mutations";
 import { watchPaths } from "../lib/paths";
+import { compareVersions } from "../lib/version";
 import { boundsVisible, type Rect } from "../lib/window-bounds";
-import { CHANNELS, type ApplyResult, type BaseHashes, type PreviewFile, type PreviewResult } from "../shared/ipc";
+import {
+  CHANNELS,
+  type ApplyResult,
+  type BaseHashes,
+  type PreviewFile,
+  type PreviewResult,
+  type UpdateCheckResult,
+} from "../shared/ipc";
 import {
   applyFileEdits,
   decodeBackupId,
@@ -35,6 +43,9 @@ let mcpTestInFlight = false;
 const DEFAULT_MCP_TEST_TIMEOUT_SEC = 10;
 const DARK_BG = "#101418";
 const LIGHT_BG = "#f5f7fa";
+const RELEASES_LATEST_URL = "https://github.com/tktk7l9/agent-cockpit/releases/latest";
+const GITHUB_LATEST_RELEASE_API = "https://api.github.com/repos/tktk7l9/agent-cockpit/releases/latest";
+const UPDATE_CHECK_TIMEOUT_MS = 10_000;
 
 function userData(): string {
   return app.getPath("userData");
@@ -96,7 +107,7 @@ function toPreview(edits: FileEdit[], baseHashes: BaseHashes): PreviewResult {
 }
 
 function registerIpc(): void {
-  ipcMain.handle(CHANNELS.scan, () => runScan(HOME, loadAppConfig(userData()).projects));
+  ipcMain.handle(CHANNELS.scan, () => runScan(HOME, loadAppConfig(userData()).projects, app.getVersion()));
 
   ipcMain.handle(CHANNELS.preview, (_e, mutation: Mutation): PreviewResult => {
     try {
@@ -130,7 +141,7 @@ function registerIpc(): void {
       saveAppConfig(userData(), config);
     }
     restartWatcher();
-    return runScan(HOME, config.projects);
+    return runScan(HOME, config.projects, app.getVersion());
   });
 
   ipcMain.handle(CHANNELS.removeProject, (_e, projectPath: string) => {
@@ -138,7 +149,7 @@ function registerIpc(): void {
     config.projects = config.projects.filter((p) => p !== projectPath);
     saveAppConfig(userData(), config);
     restartWatcher();
-    return runScan(HOME, config.projects);
+    return runScan(HOME, config.projects, app.getVersion());
   });
 
   ipcMain.handle(CHANNELS.listBackups, () => listBackups(userData()));
@@ -211,6 +222,32 @@ function registerIpc(): void {
     } finally {
       mcpTestInFlight = false;
     }
+  });
+
+  ipcMain.handle(CHANNELS.checkUpdate, async (): Promise<UpdateCheckResult> => {
+    const current = app.getVersion();
+    try {
+      const res = await fetch(GITHUB_LATEST_RELEASE_API, {
+        headers: { Accept: "application/vnd.github+json", "User-Agent": "agent-cockpit" },
+        signal: AbortSignal.timeout(UPDATE_CHECK_TIMEOUT_MS),
+      });
+      if (!res.ok) return { status: "error", message: `GitHub API returned ${res.status}` };
+      const body = (await res.json()) as { tag_name?: unknown };
+      const tagName = typeof body.tag_name === "string" ? body.tag_name : "";
+      const latest = tagName.replace(/^v/i, "");
+      const cmp = compareVersions(latest, current);
+      if (cmp === null) return { status: "error", message: "Could not parse release version" };
+      if (cmp > 0) return { status: "update-available", current, latest, url: RELEASES_LATEST_URL };
+      return { status: "up-to-date", current };
+    } catch (err) {
+      return { status: "error", message: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  // Ignores any argument — the destination is always this fixed URL, never
+  // whatever the (network-supplied) update-check response happened to contain.
+  ipcMain.handle(CHANNELS.openReleases, () => {
+    void shell.openExternal(RELEASES_LATEST_URL);
   });
 }
 

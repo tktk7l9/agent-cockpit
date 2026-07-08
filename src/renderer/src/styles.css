@@ -193,6 +193,22 @@ nav {
   text-decoration: underline;
 }
 
+.update-check {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 4px 6px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  width: 100%;
+  cursor: pointer;
+}
+
+.update-check:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+
 /* ---- content ---- */
 
 .content {

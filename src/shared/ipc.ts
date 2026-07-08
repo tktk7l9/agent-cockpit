@@ -8,6 +8,7 @@ import type { Mutation } from "../lib/mutations";
 
 export interface ScanResultPayload extends Inventory {
   home: string;
+  version: string;
 }
 
 export interface PreviewFile {
@@ -36,6 +37,11 @@ export interface BackupInfo {
 
 export type BaseHashes = Record<string, string | null>;
 
+export type UpdateCheckResult =
+  | { status: "update-available"; current: string; latest: string; url: string }
+  | { status: "up-to-date"; current: string }
+  | { status: "error"; message: string };
+
 export const CHANNELS = {
   scan: "cockpit:scan",
   preview: "cockpit:preview",
@@ -48,6 +54,8 @@ export const CHANNELS = {
   reveal: "cockpit:reveal",
   changed: "cockpit:changed",
   mcpTest: "cockpit:mcp-test",
+  checkUpdate: "cockpit:check-update",
+  openReleases: "cockpit:open-releases",
 } as const;
 
 export interface CockpitApi {
@@ -63,6 +71,10 @@ export interface CockpitApi {
   reveal(path: string): Promise<void>;
   /** Runs the initialize handshake against the given (unsaved) MCP server form values. */
   mcpTest(input: McpInput, timeoutSec?: number): Promise<ProbeResult>;
+  /** User-initiated only — never called automatically. Fetches the latest GitHub release tag. */
+  checkUpdate(): Promise<UpdateCheckResult>;
+  /** Opens the fixed Releases page in the OS browser. */
+  openReleases(): Promise<void>;
   /** Fires (debounced) when any watched config file changes on disk. */
   onChanged(callback: () => void): () => void;
 }

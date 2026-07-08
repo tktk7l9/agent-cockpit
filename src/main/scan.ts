@@ -61,7 +61,7 @@ export function resolveProjects(home: string, manualProjects: string[]): string[
   return [...all].filter(isInterestingProject).sort();
 }
 
-export function runScan(home: string, manualProjects: string[]): ScanResultPayload {
+export function runScan(home: string, manualProjects: string[], version: string): ScanResultPayload {
   const projects = resolveProjects(home, manualProjects);
   const snaps = collectSnapshots(home, projects);
   const inventory = buildInventory(snaps, manualProjects);
@@ -70,5 +70,6 @@ export function runScan(home: string, manualProjects: string[]): ScanResultPaylo
     ...inventory,
     projects: inventory.projects.filter((p) => scanned.has(p.path)),
     home,
+    version,
   };
 }

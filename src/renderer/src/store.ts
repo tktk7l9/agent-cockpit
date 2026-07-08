@@ -60,6 +60,7 @@ interface CockpitState {
   backups: BackupInfo[];
   paletteOpen: boolean;
   errorsOpen: boolean;
+  updateInfo: { current: string; latest: string; url: string } | null;
 
   refresh(): Promise<void>;
   setSection(section: Section): void;
@@ -73,6 +74,8 @@ interface CockpitState {
   closePalette(): void;
   openErrors(): void;
   closeErrors(): void;
+  checkUpdate(): Promise<void>;
+  dismissUpdate(): void;
   requestPreview(mutation: Mutation): Promise<void>;
   requestRestorePreview(id: string): Promise<void>;
   repreview(): Promise<void>;
@@ -98,6 +101,7 @@ export const useStore = create<CockpitState>((set, get) => ({
   backups: [],
   paletteOpen: false,
   errorsOpen: false,
+  updateInfo: null,
 
   refresh: async () => {
     set({ loading: true });
@@ -193,6 +197,20 @@ export const useStore = create<CockpitState>((set, get) => ({
   closePalette: () => set({ paletteOpen: false }),
   openErrors: () => set({ errorsOpen: true }),
   closeErrors: () => set({ errorsOpen: false }),
+
+  checkUpdate: async () => {
+    const result = await window.cockpit.checkUpdate();
+    if (result.status === "update-available") {
+      set({ updateInfo: { current: result.current, latest: result.latest, url: result.url } });
+    } else if (result.status === "up-to-date") {
+      set({ updateInfo: null });
+      get().showToast("ok", `You're up to date (v${result.current})`);
+    } else {
+      set({ updateInfo: null });
+      get().showToast("err", `Update check failed: ${result.message}`);
+    }
+  },
+  dismissUpdate: () => set({ updateInfo: null }),
 }));
 
 export function entitiesFor(data: ScanResultPayload | null, kind: EntityKind, agentFilter: AgentId | "all"): Entity[] {
