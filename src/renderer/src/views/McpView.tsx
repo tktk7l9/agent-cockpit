@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { mcpSecretValues, type McpInput } from "../../../lib/agents/mcp-common";
+import type { ProbeResult } from "../../../lib/mcp-probe";
 import type { McpServerEntity, McpTransport, ProjectInfo } from "../../../lib/model/types";
 import type { McpTargetRef } from "../../../lib/mutations";
 import { validateMcpInput } from "../../../lib/validate";
@@ -148,6 +149,8 @@ function McpEditor({
   const [headers, setHeaders] = useState<[string, string][]>(Object.entries(entity?.headers ?? {}));
   const [timeout, setTimeoutSec] = useState(entity?.startupTimeoutSec?.toString() ?? "");
   const [errors, setErrors] = useState<string[]>([]);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<ProbeResult | null>(null);
 
   const touch = <T,>(setter: (v: T) => void) => (v: T) => {
     setter(v);
@@ -186,6 +189,23 @@ function McpEditor({
   const remove = (): void => {
     if (!entity) return;
     void requestPreview({ op: "deleteMcp", target, name: entity.name });
+  };
+
+  const runTest = async (): Promise<void> => {
+    const input = buildInput();
+    const problems = validateMcpInput(input);
+    if (problems.length > 0) {
+      setErrors(problems);
+      return;
+    }
+    setErrors([]);
+    setTesting(true);
+    setTestResult(null);
+    try {
+      setTestResult(await window.cockpit.mcpTest(input));
+    } finally {
+      setTesting(false);
+    }
   };
 
   return (
@@ -286,6 +306,14 @@ function McpEditor({
         </div>
       )}
 
+      {testResult && (
+        <div className={`banner ${testResult.ok ? "banner-ok" : "banner-warn"}`}>
+          {testResult.ok
+            ? `✓ initialize OK — ${testResult.detail} (${testResult.elapsedMs}ms)`
+            : `✗ ${testResult.phase}: ${testResult.detail} (${testResult.elapsedMs}ms)`}
+        </div>
+      )}
+
       <div className="editor-actions">
         {entity && !entity.readOnly && (
           <button className="btn btn-danger" onClick={remove}>
@@ -296,6 +324,9 @@ function McpEditor({
         {mcpSecretValues(Object.fromEntries(env), Object.fromEntries(headers)).length > 0 && (
           <span className="muted small">env/header values are masked in the diff</span>
         )}
+        <button className="btn btn-small" disabled={testing} onClick={() => void runTest()}>
+          {testing ? "Testing…" : "Test"}
+        </button>
         <button className="btn btn-primary" onClick={save}>
           Save…
         </button>

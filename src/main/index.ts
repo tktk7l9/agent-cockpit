@@ -2,7 +2,10 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import * as os from "node:os";
 import * as path from "node:path";
 import chokidar, { type FSWatcher } from "chokidar";
+import type { McpInput } from "../lib/agents/mcp-common";
+import { mcpSecretValues } from "../lib/agents/mcp-common";
 import { buildDiffLines, maskDiff } from "../lib/diff";
+import type { ProbeResult } from "../lib/mcp-probe";
 import type { FileEdit } from "../lib/model/types";
 import { mutationReadPaths, planMutation, type Mutation } from "../lib/mutations";
 import { watchPaths } from "../lib/paths";
@@ -17,6 +20,7 @@ import {
   resolveAndCheck,
   writeBackup,
 } from "./fs-gateway";
+import { probeHttp, probeStdio } from "./mcp-probe";
 import { runScan, resolveProjects } from "./scan";
 import { loadAppConfig, saveAppConfig } from "./state";
 
@@ -25,6 +29,9 @@ const HOME = os.homedir();
 let mainWindow: BrowserWindow | null = null;
 let watcher: FSWatcher | null = null;
 let changeTimer: NodeJS.Timeout | null = null;
+let mcpTestInFlight = false;
+
+const DEFAULT_MCP_TEST_TIMEOUT_SEC = 10;
 
 function userData(): string {
   return app.getPath("userData");
@@ -173,6 +180,34 @@ function registerIpc(): void {
 
   ipcMain.handle(CHANNELS.reveal, (_e, filePath: string) => {
     shell.showItemInFolder(checkPath(filePath));
+  });
+
+  ipcMain.handle(CHANNELS.mcpTest, async (_e, input: McpInput, timeoutSec?: number): Promise<ProbeResult> => {
+    if (mcpTestInFlight) {
+      return { ok: false, phase: "spawn", detail: "another test is already running", elapsedMs: 0 };
+    }
+    mcpTestInFlight = true;
+    try {
+      const timeoutMs = (timeoutSec ?? input.startupTimeoutSec ?? DEFAULT_MCP_TEST_TIMEOUT_SEC) * 1000;
+      if (input.transport === "stdio") {
+        if (!input.command || input.command.trim() === "") {
+          return { ok: false, phase: "spawn", detail: "command is required", elapsedMs: 0 };
+        }
+        return await probeStdio(
+          input.command,
+          input.args ?? [],
+          input.env ?? {},
+          timeoutMs,
+          mcpSecretValues(input.env, input.headers),
+        );
+      }
+      if (!input.url || input.url.trim() === "") {
+        return { ok: false, phase: "http", detail: "url is required", elapsedMs: 0 };
+      }
+      return await probeHttp(input.url, input.headers ?? {}, timeoutMs);
+    } finally {
+      mcpTestInFlight = false;
+    }
   });
 }
 

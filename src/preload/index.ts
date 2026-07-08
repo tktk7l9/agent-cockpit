@@ -1,6 +1,7 @@
 // The only bridge between renderer and main. No generic ipcRenderer passthrough.
 
 import { contextBridge, ipcRenderer } from "electron";
+import type { McpInput } from "../lib/agents/mcp-common";
 import type { Mutation } from "../lib/mutations";
 import { CHANNELS, type BaseHashes, type CockpitApi } from "../shared/ipc";
 
@@ -14,6 +15,7 @@ const api: CockpitApi = {
   previewRestore: (id: string) => ipcRenderer.invoke(CHANNELS.previewRestore, id),
   applyRestore: (id: string, baseHash: string | null) => ipcRenderer.invoke(CHANNELS.applyRestore, id, baseHash),
   reveal: (path: string) => ipcRenderer.invoke(CHANNELS.reveal, path),
+  mcpTest: (input: McpInput, timeoutSec?: number) => ipcRenderer.invoke(CHANNELS.mcpTest, input, timeoutSec),
   onChanged: (callback: () => void) => {
     const listener = (): void => callback();
     ipcRenderer.on(CHANNELS.changed, listener);

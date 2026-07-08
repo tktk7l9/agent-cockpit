@@ -1,6 +1,8 @@
 // Typed IPC contract shared by main, preload and renderer.
 
 import type { DiffLine } from "../lib/diff";
+import type { McpInput } from "../lib/agents/mcp-common";
+import type { ProbeResult } from "../lib/mcp-probe";
 import type { Inventory } from "../lib/model/types";
 import type { Mutation } from "../lib/mutations";
 
@@ -45,6 +47,7 @@ export const CHANNELS = {
   applyRestore: "cockpit:apply-restore",
   reveal: "cockpit:reveal",
   changed: "cockpit:changed",
+  mcpTest: "cockpit:mcp-test",
 } as const;
 
 export interface CockpitApi {
@@ -58,6 +61,8 @@ export interface CockpitApi {
   previewRestore(id: string): Promise<PreviewResult>;
   applyRestore(id: string, baseHash: string | null): Promise<ApplyResult>;
   reveal(path: string): Promise<void>;
+  /** Runs the initialize handshake against the given (unsaved) MCP server form values. */
+  mcpTest(input: McpInput, timeoutSec?: number): Promise<ProbeResult>;
   /** Fires (debounced) when any watched config file changes on disk. */
   onChanged(callback: () => void): () => void;
 }

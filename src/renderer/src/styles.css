@@ -581,6 +581,12 @@ select:focus {
   color: var(--warn);
 }
 
+.banner-ok {
+  background: rgba(63, 185, 80, 0.12);
+  border: 1px solid rgba(63, 185, 80, 0.5);
+  color: var(--ok);
+}
+
 .banner-top {
   margin: 10px 16px 0;
 }
