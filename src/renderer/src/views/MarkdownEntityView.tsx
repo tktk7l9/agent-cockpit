@@ -10,8 +10,10 @@ import type {
   SubagentEntity,
 } from "../../../lib/model/types";
 import type { Mutation } from "../../../lib/mutations";
+import { counterpartsOf } from "../../../lib/skill-sync";
 import { validateEntityName, validateSkillInput } from "../../../lib/validate";
 import { CodeEditor } from "../components/CodeEditor";
+import { SkillCompare } from "../components/SkillCompare";
 import { AgentBadge, EmptyState, RevealButton, ScopeTag } from "../components/ui";
 import { entitiesFor, useStore } from "../store";
 
@@ -75,6 +77,21 @@ export function MarkdownEntityView({ kind }: { kind: MdKind }): React.JSX.Elemen
   const entities = entitiesFor(data, kind, agentFilter) as MdEntity[];
   const selected = entities.find((e) => e.id === selectedId);
 
+  const allSkills = useMemo(
+    () => (data ? (data.entities.filter((e) => e.kind === "skill") as SkillEntity[]) : []),
+    [data],
+  );
+  const syncTags = useMemo(() => {
+    const map = new Map<string, "synced" | "differs">();
+    if (kind !== "skill") return map;
+    for (const s of allSkills) {
+      const counterparts = counterpartsOf(s, allSkills);
+      if (counterparts.length === 0) continue;
+      map.set(s.id, counterparts.every((c) => c.identical) ? "synced" : "differs");
+    }
+    return map;
+  }, [kind, allSkills]);
+
   return (
     <div className="split">
       <div className="list-pane">
@@ -93,6 +110,8 @@ export function MarkdownEntityView({ kind }: { kind: MdKind }): React.JSX.Elemen
                 <AgentBadge agent={e.agent} />
                 <ScopeTag scope={e.scope} />
                 {e.readOnly && <span className="tag">built-in</span>}
+                {syncTags.get(e.id) === "synced" && <span className="tag">≡ synced</span>}
+                {syncTags.get(e.id) === "differs" && <span className="tag tag-warn">≠ differs</span>}
               </div>
               <div className="entity-row-sub">
                 <span className="muted ellipsis">{"description" in e ? (e.description ?? "") : ""}</span>
@@ -102,7 +121,14 @@ export function MarkdownEntityView({ kind }: { kind: MdKind }): React.JSX.Elemen
         </ul>
       </div>
       {(selected || creating) && data && (
-        <MdEditor key={selected?.id ?? "new"} kind={kind} entity={selected} home={data.home} projects={data.projects} />
+        <MdEditor
+          key={selected?.id ?? "new"}
+          kind={kind}
+          entity={selected}
+          home={data.home}
+          projects={data.projects}
+          allSkills={allSkills}
+        />
       )}
     </div>
   );
@@ -113,11 +139,13 @@ function MdEditor({
   entity,
   home,
   projects,
+  allSkills,
 }: {
   kind: MdKind;
   entity: MdEntity | undefined;
   home: string;
   projects: ProjectInfo[];
+  allSkills: SkillEntity[];
 }): React.JSX.Element {
   const requestPreview = useStore((s) => s.requestPreview);
   const stopEditing = useStore((s) => s.stopEditing);
@@ -249,6 +277,10 @@ function MdEditor({
         <label>Body (markdown)</label>
         <CodeEditor value={body} lang="markdown" readOnly={readOnly} minHeight="260px" onChange={(v) => { setBody(v); setDirty(true); }} />
       </div>
+
+      {entity && kind === "skill" && entity.kind === "skill" && (
+        <SkillCompare entity={entity} all={allSkills} home={home} />
+      )}
 
       {entity && Object.keys(("frontmatterExtras" in entity ? entity.frontmatterExtras : {}) ?? {}).length > 0 && (
         <div className="field">
