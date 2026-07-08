@@ -182,7 +182,15 @@ nav {
   font-size: 11px;
   color: var(--warn);
   padding: 4px 6px;
-  cursor: help;
+  border: none;
+  background: transparent;
+  text-align: left;
+  width: 100%;
+  cursor: pointer;
+}
+
+.scan-errors:hover {
+  text-decoration: underline;
 }
 
 /* ---- content ---- */

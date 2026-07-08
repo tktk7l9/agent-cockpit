@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import type { AgentId, EntityKind } from "../../lib/model/types";
 import { CommandPalette } from "./components/CommandPalette";
 import { DiffModal } from "./components/DiffModal";
+import { ScanErrorsModal } from "./components/ScanErrorsModal";
 import { AGENT_LABEL } from "./components/ui";
 import { entitiesFor, useStore, type Section } from "./store";
 import { BackupsView } from "./views/BackupsView";
@@ -38,6 +39,7 @@ export function App(): React.JSX.Element {
   const markStaleOrRefresh = useStore((s) => s.markStaleOrRefresh);
   const toast = useStore((s) => s.toast);
   const openPalette = useStore((s) => s.openPalette);
+  const openErrors = useStore((s) => s.openErrors);
 
   useEffect(() => {
     void refresh();
@@ -89,9 +91,13 @@ export function App(): React.JSX.Element {
             ))}
           </div>
           {data && data.errors.length > 0 && (
-            <div className="scan-errors" title={data.errors.map((e) => `${e.path}: ${e.message}`).join("\n")}>
+            <button
+              className="scan-errors"
+              title={data.errors.map((e) => `${e.path}: ${e.message}`).join("\n")}
+              onClick={openErrors}
+            >
               ⚠ {data.errors.length} file(s) could not be parsed
-            </div>
+            </button>
           )}
         </div>
       </aside>
@@ -124,6 +130,7 @@ export function App(): React.JSX.Element {
       </main>
 
       <DiffModal />
+      <ScanErrorsModal />
       <CommandPalette />
       {toast && <div className={`toast toast-${toast.kind}`}>{toast.text}</div>}
     </div>
