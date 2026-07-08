@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import type { AgentId, EntityKind } from "../../lib/model/types";
+import { CommandPalette } from "./components/CommandPalette";
 import { DiffModal } from "./components/DiffModal";
 import { AGENT_LABEL } from "./components/ui";
 import { entitiesFor, useStore, type Section } from "./store";
@@ -36,6 +37,7 @@ export function App(): React.JSX.Element {
   const refresh = useStore((s) => s.refresh);
   const markStaleOrRefresh = useStore((s) => s.markStaleOrRefresh);
   const toast = useStore((s) => s.toast);
+  const openPalette = useStore((s) => s.openPalette);
 
   useEffect(() => {
     void refresh();
@@ -43,6 +45,17 @@ export function App(): React.JSX.Element {
     return unsubscribe;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (e.metaKey && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        openPalette();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [openPalette]);
 
   return (
     <div className="app">
@@ -110,6 +123,7 @@ export function App(): React.JSX.Element {
       </main>
 
       <DiffModal />
+      <CommandPalette />
       {toast && <div className={`toast toast-${toast.kind}`}>{toast.text}</div>}
     </div>
   );

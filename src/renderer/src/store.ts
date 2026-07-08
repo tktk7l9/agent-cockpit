@@ -25,6 +25,7 @@ interface CockpitState {
   preview: PreviewState | null;
   toast: { kind: "ok" | "err"; text: string } | null;
   backups: BackupInfo[];
+  paletteOpen: boolean;
 
   refresh(): Promise<void>;
   setSection(section: Section): void;
@@ -34,6 +35,8 @@ interface CockpitState {
   stopEditing(): void;
   setDirty(dirty: boolean): void;
   markStaleOrRefresh(): void;
+  openPalette(): void;
+  closePalette(): void;
   requestPreview(mutation: Mutation): Promise<void>;
   requestRestorePreview(id: string): Promise<void>;
   confirmApply(): Promise<void>;
@@ -54,6 +57,7 @@ export const useStore = create<CockpitState>((set, get) => ({
   preview: null,
   toast: null,
   backups: [],
+  paletteOpen: false,
 
   refresh: async () => {
     set({ loading: true });
@@ -122,6 +126,9 @@ export const useStore = create<CockpitState>((set, get) => ({
   loadBackups: async () => {
     set({ backups: await window.cockpit.listBackups() });
   },
+
+  openPalette: () => set({ paletteOpen: true }),
+  closePalette: () => set({ paletteOpen: false }),
 }));
 
 export function entitiesFor(data: ScanResultPayload | null, kind: EntityKind, agentFilter: AgentId | "all"): Entity[] {
