@@ -203,7 +203,13 @@ export function buildInventory(snaps: TaggedSnapshot[], manualProjects: string[]
           const servers = parseMcpJsonFile(snap.text);
           const gates = tag.agent === "claude" && tag.scope.level === "project" ? claudeGlobal.projects[tag.scope.projectPath] : undefined;
           for (const [name, raw] of Object.entries(servers)) {
-            const enabled = gates ? !gates.disabledMcpjsonServers.includes(name) : undefined;
+            const enabled = !gates
+              ? undefined
+              : gates.disabledMcpjsonServers.includes(name)
+                ? false
+                : gates.enabledMcpjsonServers.includes(name)
+                  ? true
+                  : undefined;
             const source: McpSource = tag.agent === "claude" ? { kind: "mcpjson" } : { kind: "cursor" };
             entities.push(mcpEntity(tag.agent, tag.scope, name, raw, source, snap.path, enabled));
           }

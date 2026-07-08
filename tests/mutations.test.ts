@@ -161,6 +161,123 @@ describe("deleteMcp", () => {
   });
 });
 
+describe("toggleMcpJsonServer", () => {
+  const claudeJsonWithProject = JSON.stringify(
+    {
+      decoy: { a: 1 },
+      numStartups: 42,
+      mcpServers: { keyway: { type: "stdio", command: "npx" } },
+      projects: {
+        "/proj": {
+          allowedTools: ["Bash"],
+          mcpServers: {},
+          enabledMcpjsonServers: ["already-on"],
+          disabledMcpjsonServers: ["already-off"],
+        },
+        "/other": { mcpServers: {} },
+      },
+    },
+    null,
+    2,
+  );
+
+  function projectOf(text: string | null): { enabledMcpjsonServers: string[]; disabledMcpjsonServers: string[] } {
+    const parsed = parseJsonText(text) as {
+      projects: Record<string, { enabledMcpjsonServers: string[]; disabledMcpjsonServers: string[] }>;
+    };
+    return parsed.projects["/proj"] as { enabledMcpjsonServers: string[]; disabledMcpjsonServers: string[] };
+  }
+
+  it("enables a server: removes it from disabled, adds it to enabled", () => {
+    const m: Mutation = {
+      op: "toggleMcpJsonServer",
+      claudeJsonPath: "/h/.claude.json",
+      projectPath: "/proj",
+      name: "supabase",
+      enabled: true,
+    };
+    const edit = only(planMutation(ctx({ "/h/.claude.json": claudeJsonWithProject }), m));
+    const proj = projectOf(edit.newText);
+    expect(proj.enabledMcpjsonServers).toEqual(["already-on", "supabase"]);
+    expect(proj.disabledMcpjsonServers).toEqual(["already-off"]);
+    // untouched keys survive byte-for-byte
+    const parsed = parseJsonText(edit.newText) as Record<string, unknown>;
+    expect(parsed["decoy"]).toEqual({ a: 1 });
+    expect(parsed["numStartups"]).toBe(42);
+    expect((parsed["projects"] as Record<string, { mcpServers: unknown }>)["/other"]?.mcpServers).toEqual({});
+  });
+
+  it("disables a server: removes it from enabled, adds it to disabled", () => {
+    const m: Mutation = {
+      op: "toggleMcpJsonServer",
+      claudeJsonPath: "/h/.claude.json",
+      projectPath: "/proj",
+      name: "already-on",
+      enabled: false,
+    };
+    const edit = only(planMutation(ctx({ "/h/.claude.json": claudeJsonWithProject }), m));
+    const proj = projectOf(edit.newText);
+    expect(proj.enabledMcpjsonServers).toEqual([]);
+    expect(proj.disabledMcpjsonServers).toEqual(["already-off", "already-on"]);
+  });
+
+  it("is idempotent when the server is already in the desired state", () => {
+    const enableAgain: Mutation = {
+      op: "toggleMcpJsonServer",
+      claudeJsonPath: "/h/.claude.json",
+      projectPath: "/proj",
+      name: "already-on",
+      enabled: true,
+    };
+    const edit = only(planMutation(ctx({ "/h/.claude.json": claudeJsonWithProject }), enableAgain));
+    const proj = projectOf(edit.newText);
+    expect(proj.enabledMcpjsonServers).toEqual(["already-on"]);
+    expect(proj.disabledMcpjsonServers).toEqual(["already-off"]);
+  });
+
+  it("is idempotent when disabling a server that is already disabled", () => {
+    const disableAgain: Mutation = {
+      op: "toggleMcpJsonServer",
+      claudeJsonPath: "/h/.claude.json",
+      projectPath: "/proj",
+      name: "already-off",
+      enabled: false,
+    };
+    const edit = only(planMutation(ctx({ "/h/.claude.json": claudeJsonWithProject }), disableAgain));
+    const proj = projectOf(edit.newText);
+    expect(proj.disabledMcpjsonServers).toEqual(["already-off"]);
+    expect(proj.enabledMcpjsonServers).toEqual(["already-on"]);
+  });
+
+  it("creates the project entry and array keys when the project is entirely absent", () => {
+    const m: Mutation = {
+      op: "toggleMcpJsonServer",
+      claudeJsonPath: "/h/.claude.json",
+      projectPath: "/brand-new",
+      name: "srv",
+      enabled: true,
+    };
+    const edit = only(planMutation(ctx({ "/h/.claude.json": claudeJsonWithProject }), m));
+    const parsed = parseJsonText(edit.newText) as {
+      projects: Record<string, { enabledMcpjsonServers: string[]; disabledMcpjsonServers: string[] }>;
+    };
+    expect(parsed.projects["/brand-new"]).toEqual({ enabledMcpjsonServers: ["srv"], disabledMcpjsonServers: [] });
+    // existing projects untouched
+    expect(parsed.projects["/proj"]?.enabledMcpjsonServers).toEqual(["already-on"]);
+  });
+
+  it("throws when ~/.claude.json does not exist", () => {
+    const m: Mutation = {
+      op: "toggleMcpJsonServer",
+      claudeJsonPath: "/nope.json",
+      projectPath: "/proj",
+      name: "x",
+      enabled: true,
+    };
+    expect(() => planMutation(ctx({}), m)).toThrow(/not found/);
+  });
+});
+
 describe("skills", () => {
   const SKILL = "---\nname: keihi\n# comment survives\ndescription: old\nversion: 1.0.0\n---\nold body\n";
 
@@ -314,6 +431,9 @@ describe("mutationReadPaths", () => {
   it("returns the files each op consults", () => {
     expect(mutationReadPaths({ op: "upsertMcp", target: { kind: "codex", filePath: "/c" }, input: { name: "a", transport: "stdio", command: "x" } })).toEqual(["/c"]);
     expect(mutationReadPaths({ op: "deleteMcp", target: { kind: "cursor", filePath: "/m" }, name: "a" })).toEqual(["/m"]);
+    expect(
+      mutationReadPaths({ op: "toggleMcpJsonServer", claudeJsonPath: "/h/.claude.json", projectPath: "/p", name: "a", enabled: true }),
+    ).toEqual(["/h/.claude.json"]);
     expect(mutationReadPaths({ op: "upsertSkill", dir: "/d", name: "n", prevName: "o", description: "d", body: "" })).toEqual([
       "/d/o/SKILL.md",
       "/d/n/SKILL.md",

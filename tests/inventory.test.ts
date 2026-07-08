@@ -10,7 +10,11 @@ const CLAUDE_GLOBAL = JSON.stringify({
   numStartups: 9,
   mcpServers: { keyway: { type: "stdio", command: "npx", args: ["-y", "keyway"], env: { TOKEN: "tok-value" } } },
   projects: {
-    "/proj": { mcpServers: { mdn: { type: "http", url: "https://mdn" } }, disabledMcpjsonServers: ["disabled-one"] },
+    "/proj": {
+      mcpServers: { mdn: { type: "http", url: "https://mdn" } },
+      enabledMcpjsonServers: ["supabase"],
+      disabledMcpjsonServers: ["disabled-one"],
+    },
     "/gone": {},
   },
 });
@@ -47,7 +51,13 @@ function snaps(): TaggedSnapshot[] {
     {
       tag: { t: "mcpJson", agent: "claude", scope: PROJ },
       path: "/proj/.mcp.json",
-      text: JSON.stringify({ mcpServers: { supabase: { type: "http", url: "https://s" }, "disabled-one": { command: "x" } } }),
+      text: JSON.stringify({
+        mcpServers: {
+          supabase: { type: "http", url: "https://s" },
+          "disabled-one": { command: "x" },
+          "unreviewed-one": { command: "y" },
+        },
+      }),
     },
     {
       tag: { t: "skill", agent: "claude", scope: USER, name: "keihi", readOnly: false },
@@ -95,10 +105,26 @@ describe("buildInventory", () => {
     expect(mdn?.source).toEqual({ kind: "claude-project", projectPath: "/proj" });
   });
 
-  it("gates .mcp.json servers with disable lists", () => {
+  it("gates .mcp.json servers with the enable/disable lists (three-state)", () => {
     const mcp = inv.entities.filter((e) => e.kind === "mcp") as McpServerEntity[];
     expect(mcp.find((e) => e.name === "supabase")?.enabled).toBe(true);
     expect(mcp.find((e) => e.name === "disabled-one")?.enabled).toBe(false);
+    expect(mcp.find((e) => e.name === "unreviewed-one")?.enabled).toBeUndefined();
+  });
+
+  it("leaves .mcp.json servers ungated (undefined) when there is no project entry at all", () => {
+    const inv2 = buildInventory(
+      [
+        {
+          tag: { t: "mcpJson", agent: "claude", scope: { level: "project", projectPath: "/untracked" } },
+          path: "/untracked/.mcp.json",
+          text: JSON.stringify({ mcpServers: { x: { command: "y" } } }),
+        },
+      ],
+      [],
+    );
+    const mcp = inv2.entities.filter((e) => e.kind === "mcp") as McpServerEntity[];
+    expect(mcp.find((e) => e.name === "x")?.enabled).toBeUndefined();
   });
 
   it("collects codex MCP servers and plugins", () => {

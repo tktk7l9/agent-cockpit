@@ -30,6 +30,7 @@ export type McpTargetRef =
 export type Mutation =
   | { op: "upsertMcp"; target: McpTargetRef; prevName?: string; input: McpInput }
   | { op: "deleteMcp"; target: McpTargetRef; name: string }
+  | { op: "toggleMcpJsonServer"; claudeJsonPath: string; projectPath: string; name: string; enabled: boolean }
   | {
       op: "upsertSkill";
       dir: string;
@@ -140,6 +141,27 @@ function planDeleteMcp(ctx: PlanContext, m: Extract<Mutation, { op: "deleteMcp" 
   return [{ path: m.target.filePath, newText, secretValues }];
 }
 
+/** Toggles a .mcp.json server's Claude Code approval state (enable/disable lists only). */
+function planToggleMcpJsonServer(ctx: PlanContext, m: Extract<Mutation, { op: "toggleMcpJsonServer" }>): FileEdit[] {
+  const text = ctx.snapshot(m.claudeJsonPath);
+  if (text === null) throw new Error(`file not found: ${m.claudeJsonPath}`);
+  const proj = parseClaudeGlobal(text).projects[m.projectPath];
+  const enabledCur = proj?.enabledMcpjsonServers ?? [];
+  const disabledCur = proj?.disabledMcpjsonServers ?? [];
+  let enabledNew: string[];
+  let disabledNew: string[];
+  if (m.enabled) {
+    enabledNew = enabledCur.includes(m.name) ? enabledCur : [...enabledCur, m.name];
+    disabledNew = disabledCur.filter((n) => n !== m.name);
+  } else {
+    disabledNew = disabledCur.includes(m.name) ? disabledCur : [...disabledCur, m.name];
+    enabledNew = enabledCur.filter((n) => n !== m.name);
+  }
+  const afterEnabled = setJsonValue(text, ["projects", m.projectPath, "enabledMcpjsonServers"], enabledNew);
+  const newText = setJsonValue(afterEnabled, ["projects", m.projectPath, "disabledMcpjsonServers"], disabledNew);
+  return [{ path: m.claudeJsonPath, newText }];
+}
+
 // ---- markdown-based entities ----
 
 function planUpsertSkill(ctx: PlanContext, m: Extract<Mutation, { op: "upsertSkill" }>): FileEdit[] {
@@ -228,6 +250,8 @@ export function planMutation(ctx: PlanContext, m: Mutation): FileEdit[] {
       return planUpsertMcp(ctx, m);
     case "deleteMcp":
       return planDeleteMcp(ctx, m);
+    case "toggleMcpJsonServer":
+      return planToggleMcpJsonServer(ctx, m);
     case "upsertSkill":
       return planUpsertSkill(ctx, m);
     case "deleteSkill":
@@ -252,6 +276,8 @@ export function mutationReadPaths(m: Mutation): string[] {
       return [m.target.filePath];
     case "deleteMcp":
       return [m.target.filePath];
+    case "toggleMcpJsonServer":
+      return [m.claudeJsonPath];
     case "upsertSkill":
       return [`${m.dir}/${m.prevName ?? m.name}/SKILL.md`, `${m.dir}/${m.name}/SKILL.md`];
     case "deleteSkill":

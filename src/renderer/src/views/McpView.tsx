@@ -34,6 +34,43 @@ function targetOf(entity: McpServerEntity): McpTargetRef {
   return { kind: source.kind, filePath: entity.filePath };
 }
 
+function ApprovalSwitch({
+  home,
+  projectPath,
+  entity,
+}: {
+  home: string;
+  projectPath: string;
+  entity: McpServerEntity;
+}): React.JSX.Element {
+  const requestPreview = useStore((s) => s.requestPreview);
+  return (
+    <div className="field">
+      <label>Claude Code approval</label>
+      <button
+        className={`switch ${entity.enabled ? "on" : ""}`}
+        role="switch"
+        aria-checked={entity.enabled === true}
+        onClick={() =>
+          void requestPreview({
+            op: "toggleMcpJsonServer",
+            claudeJsonPath: `${home}/.claude.json`,
+            projectPath,
+            name: entity.name,
+            enabled: !(entity.enabled ?? false),
+          })
+        }
+      >
+        <span className="knob" />
+      </button>
+      <p className="muted small">
+        Stored in ~/.claude.json (projects.{"{path}"}). If enableAllProjectMcpServers is set there, it may take
+        precedence over this per-server flag.
+      </p>
+    </div>
+  );
+}
+
 function summary(entity: McpServerEntity): string {
   if (entity.transport === "stdio") return [entity.command, ...(entity.args ?? [])].filter(Boolean).join(" ");
   return entity.url ?? "";
@@ -68,6 +105,7 @@ export function McpView(): React.JSX.Element {
                 <AgentBadge agent={e.agent} />
                 <ScopeTag scope={e.scope} />
                 {e.enabled === false && <span className="pill pill-del">disabled</span>}
+                {e.enabled === undefined && e.source.kind === "mcpjson" && <span className="tag">unapproved</span>}
               </div>
               <div className="entity-row-sub">
                 <span className="tag">{e.transport}</span>
@@ -179,6 +217,10 @@ function McpEditor({
           Source: <code>{entity.filePath}</code>
         </p>
       )}
+
+      {entity && entity.source.kind === "mcpjson" && entity.scope.level === "project" ? (
+        <ApprovalSwitch home={home} projectPath={entity.scope.projectPath} entity={entity} />
+      ) : null}
 
       <div className="field">
         <label>Name</label>
