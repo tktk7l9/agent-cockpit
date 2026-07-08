@@ -17,6 +17,29 @@
   --radius: 8px;
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Hiragino Sans", sans-serif;
   --mono: "SF Mono", ui-monospace, Menlo, monospace;
+  --accent-fg: #0b1520;
+  --caret: #7dd3fc;
+  --selection: rgba(125, 211, 252, 0.18);
+  --active-line: rgba(125, 211, 252, 0.05);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f5f7fa;
+    --bg-panel: #ffffff;
+    --bg-raised: #eef1f5;
+    --border: #d5dce4;
+    --text: #1f2933;
+    --text-muted: #64748b;
+    --accent: #0969da;
+    --accent-soft: rgba(9, 105, 218, 0.12);
+    /* dark text on the darker-theme accent (#58a6ff) meets AA; the same
+       near-black text on this more saturated blue would not (~3.25:1) */
+    --accent-fg: #ffffff;
+    --caret: #0969da;
+    --selection: rgba(9, 105, 218, 0.15);
+    --active-line: rgba(9, 105, 218, 0.05);
+  }
 }
 
 * {
@@ -391,7 +414,7 @@ select:focus {
 .btn-primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #0b1520;
+  color: var(--accent-fg);
   font-weight: 600;
 }
 

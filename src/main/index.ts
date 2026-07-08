@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from "electron";
 import * as os from "node:os";
 import * as path from "node:path";
 import chokidar, { type FSWatcher } from "chokidar";
@@ -32,6 +32,8 @@ let changeTimer: NodeJS.Timeout | null = null;
 let mcpTestInFlight = false;
 
 const DEFAULT_MCP_TEST_TIMEOUT_SEC = 10;
+const DARK_BG = "#101418";
+const LIGHT_BG = "#f5f7fa";
 
 function userData(): string {
   return app.getPath("userData");
@@ -219,7 +221,7 @@ function createWindow(): void {
     minHeight: 600,
     title: "Agent Cockpit",
     titleBarStyle: "hiddenInset",
-    backgroundColor: "#101418",
+    backgroundColor: nativeTheme.shouldUseDarkColors ? DARK_BG : LIGHT_BG,
     webPreferences: {
       preload: path.join(__dirname, "../preload/index.js"),
       contextIsolation: true,
@@ -233,6 +235,10 @@ function createWindow(): void {
   mainWindow.webContents.on("will-navigate", (event) => event.preventDefault());
   mainWindow.on("closed", () => {
     mainWindow = null;
+  });
+
+  nativeTheme.on("updated", () => {
+    mainWindow?.setBackgroundColor(nativeTheme.shouldUseDarkColors ? DARK_BG : LIGHT_BG);
   });
 
   const devUrl = process.env["ELECTRON_RENDERER_URL"];
