@@ -12,7 +12,7 @@ import type {
 import type { Mutation } from "../../../lib/mutations";
 import { counterpartsOf } from "../../../lib/skill-sync";
 import { validateEntityName, validateSkillInput } from "../../../lib/validate";
-import { CodeEditor } from "../components/CodeEditor";
+import { LazyCodeEditor as CodeEditor } from "../components/LazyCodeEditor";
 import { SkillCompare } from "../components/SkillCompare";
 import { AgentBadge, EmptyState, RevealButton, ScopeTag } from "../components/ui";
 import { entitiesFor, useStore } from "../store";

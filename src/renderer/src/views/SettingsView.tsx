@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { claudePermissions } from "../../../lib/agents/claude";
 import type { SettingsEntity } from "../../../lib/model/types";
-import { CodeEditor } from "../components/CodeEditor";
+import { LazyCodeEditor as CodeEditor } from "../components/LazyCodeEditor";
 import { StringListEditor } from "../components/StringListEditor";
 import { AgentBadge, EmptyState, RevealButton, ScopeTag } from "../components/ui";
 import { entitiesFor, useStore } from "../store";

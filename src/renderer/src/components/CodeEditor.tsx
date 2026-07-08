@@ -87,3 +87,5 @@ export function CodeEditor({ value, onChange, lang, readOnly = false, minHeight 
 
   return <div className="code-editor" style={{ minHeight }} ref={hostRef} />;
 }
+
+export default CodeEditor;

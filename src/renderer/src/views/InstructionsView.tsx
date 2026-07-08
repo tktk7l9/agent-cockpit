@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { InstructionsEntity } from "../../../lib/model/types";
-import { CodeEditor } from "../components/CodeEditor";
+import { LazyCodeEditor as CodeEditor } from "../components/LazyCodeEditor";
 import { AgentBadge, EmptyState, RevealButton, ScopeTag } from "../components/ui";
 import { entitiesFor, useStore } from "../store";
 
