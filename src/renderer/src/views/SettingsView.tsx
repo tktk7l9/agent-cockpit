@@ -1,8 +1,14 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { claudePermissions } from "../../../lib/agents/claude";
 import type { SettingsEntity } from "../../../lib/model/types";
 import { CodeEditor } from "../components/CodeEditor";
+import { StringListEditor } from "../components/StringListEditor";
 import { AgentBadge, EmptyState, RevealButton, ScopeTag } from "../components/ui";
 import { entitiesFor, useStore } from "../store";
+
+const KNOWN_MODES = ["default", "acceptEdits", "plan", "bypassPermissions"];
+const UNSET = "__unset__";
+const CUSTOM = "__custom__";
 
 function parseInputValue(raw: string): unknown {
   try {
@@ -48,6 +54,85 @@ export function SettingsView(): React.JSX.Element {
   );
 }
 
+function PermissionsSection({ entity }: { entity: SettingsEntity }): React.JSX.Element {
+  const requestPreview = useStore((s) => s.requestPreview);
+  const setDirty = useStore((s) => s.setDirty);
+
+  const initial = useMemo(() => claudePermissions(entity.rawText), [entity.rawText]);
+  const initialOption =
+    initial.defaultMode === undefined ? UNSET : KNOWN_MODES.includes(initial.defaultMode) ? initial.defaultMode : CUSTOM;
+
+  const [modeOption, setModeOption] = useState(initialOption);
+  const [customMode, setCustomMode] = useState(initialOption === CUSTOM ? (initial.defaultMode as string) : "");
+  const [allow, setAllow] = useState<string[]>(initial.allow);
+  const [deny, setDeny] = useState<string[]>(initial.deny);
+
+  const save = (): void => {
+    const defaultMode = modeOption === UNSET ? null : modeOption === CUSTOM ? customMode.trim() : modeOption;
+    void requestPreview({
+      op: "setPermissions",
+      filePath: entity.filePath,
+      defaultMode,
+      allow: allow.filter((a) => a.trim() !== ""),
+      deny: deny.filter((d) => d.trim() !== ""),
+    });
+  };
+
+  return (
+    <div className="field">
+      <label>Permissions</label>
+      <select
+        value={modeOption}
+        onChange={(e) => {
+          setModeOption(e.target.value);
+          setDirty(true);
+        }}
+      >
+        <option value={UNSET}>(unset)</option>
+        {KNOWN_MODES.map((m) => (
+          <option key={m} value={m}>
+            {m}
+          </option>
+        ))}
+        <option value={CUSTOM}>custom…</option>
+      </select>
+      {modeOption === CUSTOM && (
+        <input
+          value={customMode}
+          className="mono"
+          placeholder="custom defaultMode value"
+          onChange={(e) => {
+            setCustomMode(e.target.value);
+            setDirty(true);
+          }}
+        />
+      )}
+      <StringListEditor
+        label="Allow rules"
+        items={allow}
+        onChange={(v) => {
+          setAllow(v);
+          setDirty(true);
+        }}
+      />
+      <StringListEditor
+        label="Deny rules"
+        items={deny}
+        onChange={(v) => {
+          setDeny(v);
+          setDirty(true);
+        }}
+      />
+      <div className="editor-actions">
+        <span className="spacer" />
+        <button className="btn btn-primary" onClick={save}>
+          Save permissions…
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function SettingsEditor({ entity }: { entity: SettingsEntity }): React.JSX.Element {
   const requestPreview = useStore((s) => s.requestPreview);
   const stopEditing = useStore((s) => s.stopEditing);
@@ -83,6 +168,8 @@ function SettingsEditor({ entity }: { entity: SettingsEntity }): React.JSX.Eleme
       <p className="muted small">
         Source: <code>{entity.filePath}</code>
       </p>
+
+      {entity.agent === "claude" && <PermissionsSection entity={entity} />}
 
       {Object.keys(entity.known).length > 0 && (
         <div className="field">

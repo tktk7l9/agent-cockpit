@@ -419,6 +419,48 @@ describe("plugins / settings / raw", () => {
     expect(created.newText).toBe('model = "m"\n');
   });
 
+  it("sets permissions fields independently, touching only the requested keys", () => {
+    const base = JSON.stringify({ decoy: 1, permissions: { defaultMode: "default", allow: ["A"], deny: ["B"] } }, null, 2);
+    const onlyAllow = only(
+      planMutation(ctx({ "/s.json": base }), { op: "setPermissions", filePath: "/s.json", allow: ["A", "C"] }),
+    );
+    expect(parseJsonText(onlyAllow.newText)).toEqual({
+      decoy: 1,
+      permissions: { defaultMode: "default", allow: ["A", "C"], deny: ["B"] },
+    });
+  });
+
+  it("sets defaultMode and deny together", () => {
+    const base = JSON.stringify({ permissions: { defaultMode: "default", allow: [], deny: [] } });
+    const edit = only(
+      planMutation(ctx({ "/s.json": base }), {
+        op: "setPermissions",
+        filePath: "/s.json",
+        defaultMode: "plan",
+        deny: ["Read(~/.ssh/**)"],
+      }),
+    );
+    expect(parseJsonText(edit.newText)).toEqual({
+      permissions: { defaultMode: "plan", allow: [], deny: ["Read(~/.ssh/**)"] },
+    });
+  });
+
+  it("removes defaultMode when set to null", () => {
+    const base = JSON.stringify({ permissions: { defaultMode: "plan", allow: [] } });
+    const edit = only(planMutation(ctx({ "/s.json": base }), { op: "setPermissions", filePath: "/s.json", defaultMode: null }));
+    expect(parseJsonText(edit.newText)).toEqual({ permissions: { allow: [] } });
+  });
+
+  it("creates settings.local.json from nothing", () => {
+    const edit = only(planMutation(ctx({}), { op: "setPermissions", filePath: "/new/settings.local.json", allow: ["Bash(ls:*)"] }));
+    expect(parseJsonText(edit.newText)).toEqual({ permissions: { allow: ["Bash(ls:*)"] } });
+  });
+
+  it("falls back to an empty object when no fields are given and the file is absent", () => {
+    const edit = only(planMutation(ctx({}), { op: "setPermissions", filePath: "/new.json" }));
+    expect(edit.newText).toBe("{}\n");
+  });
+
   it("validates raw writes per format", () => {
     expect(only(planMutation(ctx({}), { op: "writeRaw", filePath: "/f.json", format: "json", newText: '{"a":1}' })).newText).toBe('{"a":1}');
     expect(() => planMutation(ctx({}), { op: "writeRaw", filePath: "/f.json", format: "json", newText: "{oops" })).toThrow(/JSON/);
@@ -450,6 +492,7 @@ describe("mutationReadPaths", () => {
     expect(mutationReadPaths({ op: "deleteFile", filePath: "/f" })).toEqual(["/f"]);
     expect(mutationReadPaths({ op: "togglePlugin", agent: "claude", filePath: "/s", key: "k", enabled: true })).toEqual(["/s"]);
     expect(mutationReadPaths({ op: "setSetting", filePath: "/s", format: "json", keyPath: ["a"], value: 1 })).toEqual(["/s"]);
+    expect(mutationReadPaths({ op: "setPermissions", filePath: "/s", allow: ["A"] })).toEqual(["/s"]);
     expect(mutationReadPaths({ op: "writeRaw", filePath: "/s", format: "markdown", newText: "" })).toEqual(["/s"]);
   });
 });

@@ -53,6 +53,7 @@ export type Mutation =
   | { op: "deleteFile"; filePath: string }
   | { op: "togglePlugin"; agent: "claude" | "codex"; filePath: string; key: string; enabled: boolean }
   | { op: "setSetting"; filePath: string; format: SettingsFormat; keyPath: string[]; value: unknown }
+  | { op: "setPermissions"; filePath: string; defaultMode?: string | null; allow?: string[]; deny?: string[] }
   | { op: "writeRaw"; filePath: string; format: SettingsFormat | "markdown"; newText: string };
 
 export interface PlanContext {
@@ -230,6 +231,19 @@ function planSetSetting(ctx: PlanContext, m: Extract<Mutation, { op: "setSetting
   return [{ path: m.filePath, newText: setTopLevelKey(text ?? "", m.keyPath[0] as string, m.value) }];
 }
 
+function planSetPermissions(ctx: PlanContext, m: Extract<Mutation, { op: "setPermissions" }>): FileEdit[] {
+  let text = ctx.snapshot(m.filePath);
+  if (m.defaultMode !== undefined) {
+    text =
+      m.defaultMode === null
+        ? removeJsonKey(text, ["permissions", "defaultMode"])
+        : setJsonValue(text, ["permissions", "defaultMode"], m.defaultMode);
+  }
+  if (m.allow !== undefined) text = setJsonValue(text, ["permissions", "allow"], m.allow);
+  if (m.deny !== undefined) text = setJsonValue(text, ["permissions", "deny"], m.deny);
+  return [{ path: m.filePath, newText: text ?? "{}\n" }];
+}
+
 function planWriteRaw(m: Extract<Mutation, { op: "writeRaw" }>): FileEdit[] {
   if (m.format === "json" && !isJsonParseable(m.newText)) throw new Error("not valid JSON — fix before saving");
   if (m.format === "toml") assertValidToml(m.newText);
@@ -264,6 +278,8 @@ export function planMutation(ctx: PlanContext, m: Mutation): FileEdit[] {
       return planTogglePlugin(ctx, m);
     case "setSetting":
       return planSetSetting(ctx, m);
+    case "setPermissions":
+      return planSetPermissions(ctx, m);
     case "writeRaw":
       return planWriteRaw(m);
   }
@@ -289,6 +305,8 @@ export function mutationReadPaths(m: Mutation): string[] {
     case "togglePlugin":
       return [m.filePath];
     case "setSetting":
+      return [m.filePath];
+    case "setPermissions":
       return [m.filePath];
     case "writeRaw":
       return [m.filePath];

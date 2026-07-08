@@ -58,6 +58,26 @@ export function claudeSettingsKnown(text: string | null): Record<string, unknown
   return known;
 }
 
+export interface ClaudePermissions {
+  defaultMode?: string;
+  allow: string[];
+  deny: string[];
+  present: boolean;
+}
+
+/** Reads the permissions block for the dedicated Permissions editor (settings.json / settings.local.json). */
+export function claudePermissions(text: string | null): ClaudePermissions {
+  const root = asRecord(parseJsonText(text)) ?? {};
+  const permissions = asRecord(root["permissions"]);
+  if (!permissions) return { defaultMode: undefined, allow: [], deny: [], present: false };
+  return {
+    defaultMode: typeof permissions["defaultMode"] === "string" ? permissions["defaultMode"] : undefined,
+    allow: stringList(permissions["allow"]),
+    deny: stringList(permissions["deny"]),
+    present: true,
+  };
+}
+
 export function claudeEnabledPlugins(text: string | null): Record<string, boolean> {
   const root = asRecord(parseJsonText(text)) ?? {};
   const out: Record<string, boolean> = {};
