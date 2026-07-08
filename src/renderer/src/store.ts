@@ -39,6 +39,7 @@ interface CockpitState {
   closePalette(): void;
   requestPreview(mutation: Mutation): Promise<void>;
   requestRestorePreview(id: string): Promise<void>;
+  repreview(): Promise<void>;
   confirmApply(): Promise<void>;
   cancelPreview(): void;
   showToast(kind: "ok" | "err", text: string): void;
@@ -93,6 +94,22 @@ export const useStore = create<CockpitState>((set, get) => ({
       return;
     }
     set({ preview: { mutation: null, restoreId: id, files: result.files, applying: false } });
+  },
+
+  repreview: async () => {
+    const p = get().preview;
+    if (!p) return;
+    if (p.mutation) {
+      const result = await window.cockpit.preview(p.mutation);
+      if (!result.ok) {
+        get().showToast("err", result.error);
+        set({ preview: null });
+        return;
+      }
+      set({ preview: { mutation: p.mutation, files: result.files, applying: false } });
+      return;
+    }
+    if (p.restoreId) await get().requestRestorePreview(p.restoreId);
   },
 
   confirmApply: async () => {

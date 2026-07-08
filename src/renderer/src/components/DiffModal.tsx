@@ -4,6 +4,7 @@ export function DiffModal(): React.JSX.Element | null {
   const preview = useStore((s) => s.preview);
   const confirmApply = useStore((s) => s.confirmApply);
   const cancelPreview = useStore((s) => s.cancelPreview);
+  const repreview = useStore((s) => s.repreview);
   if (!preview) return null;
 
   const changed = preview.files.some((f) => f.diff.some((l) => l.type === "add" || l.type === "del") || f.deletes);
@@ -17,7 +18,13 @@ export function DiffModal(): React.JSX.Element | null {
         </header>
         {preview.conflictPath && (
           <div className="banner banner-warn">
-            File changed on disk since preview: <code>{preview.conflictPath}</code> — close and re-edit.
+            <span>
+              File changed on disk since preview: <code>{preview.conflictPath}</code> — Re-preview to refresh the
+              diff against the current file, or Cancel and edit again.
+            </span>
+            <button className="btn btn-small" onClick={() => void repreview()}>
+              Re-preview
+            </button>
           </div>
         )}
         <div className="modal-body">

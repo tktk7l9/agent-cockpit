@@ -99,7 +99,8 @@ export function App(): React.JSX.Element {
       <main className="content">
         {stale && (
           <div className="banner banner-warn banner-top">
-            Config files changed on disk while you were editing.
+            Config files changed on disk. Your draft is still intact — you can keep editing and Save… (the diff
+            preview always compares against the current file).
             <button className="btn btn-small" onClick={() => void refresh()}>
               Reload (discard draft)
             </button>
