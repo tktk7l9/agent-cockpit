@@ -23,7 +23,8 @@ export interface PreviewFile {
 export type PreviewResult = { ok: true; files: PreviewFile[] } | { ok: false; error: string };
 
 export type ApplyResult =
-  | { status: "ok" }
+  /** undoToken identifies this apply for undoLastApply (only the most recent apply is undoable). */
+  | { status: "ok"; undoToken?: number }
   | { status: "conflict"; path: string }
   | { status: "error"; message: string };
 
@@ -56,6 +57,7 @@ export const CHANNELS = {
   mcpTest: "cockpit:mcp-test",
   checkUpdate: "cockpit:check-update",
   openReleases: "cockpit:open-releases",
+  undoLastApply: "cockpit:undo-last-apply",
 } as const;
 
 export interface CockpitApi {
@@ -68,6 +70,8 @@ export interface CockpitApi {
   listBackups(): Promise<BackupInfo[]>;
   previewRestore(id: string): Promise<PreviewResult>;
   applyRestore(id: string, baseHash: string | null): Promise<ApplyResult>;
+  /** Restores every file touched by the apply that returned `undoToken`, if nothing changed them since. */
+  undoLastApply(undoToken: number): Promise<ApplyResult>;
   reveal(path: string): Promise<void>;
   /** Runs the initialize handshake against the given (unsaved) MCP server form values. */
   mcpTest(input: McpInput, timeoutSec?: number): Promise<ProbeResult>;
