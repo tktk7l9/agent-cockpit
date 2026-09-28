@@ -19,9 +19,9 @@
     "@codemirror/lang-markdown": "^6.5.2",
     "@codemirror/language": "^6.12.4",
     "@codemirror/legacy-modes": "^6.5.4",
-    "@codemirror/state": "^6.7.5",
-    "@codemirror/view": "^6.43.12",
-    "@types/node": "^26.6.2",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.13",
+    "@types/node": "^26.6.3",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^5.2.0",
@@ -29,22 +29,18 @@
     "chokidar": "^5.0.0",
     "codemirror": "^6.0.2",
     "diff": "^9.0.0",
-    "electron": "^44.4.3",
+    "electron": "^44.4.5",
     "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
     "jsonc-parser": "^3.3.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "smol-toml": "^1.8.0",
+    "smol-toml": "^1.9.0",
     "toml-eslint-parser": "^1.0.3",
     "typescript": "^7.0.2",
     "vite": "^7.3.6",
     "vitest": "^5.0.0",
     "yaml": "^2.9.1",
     "zustand": "^5.0.15"
-  },
-  "overrides": {
-    "minimatch": "^10.2.4",
-    "brace-expansion": "^5.0.9"
   }
 }
