@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, screen, shell } from "electron";
+import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import chokidar, { type FSWatcher } from "chokidar";
@@ -9,6 +10,7 @@ import type { ProbeResult } from "../lib/mcp-probe";
 import type { FileEdit } from "../lib/model/types";
 import { mutationReadPaths, planMutation, type Mutation } from "../lib/mutations";
 import { watchPaths } from "../lib/paths";
+import { createdDirOf, planUndo, type AppliedFile } from "../lib/undo";
 import { compareVersions } from "../lib/version";
 import { boundsVisible, type Rect } from "../lib/window-bounds";
 import {
@@ -39,6 +41,8 @@ let mainWindow: BrowserWindow | null = null;
 let watcher: FSWatcher | null = null;
 let changeTimer: NodeJS.Timeout | null = null;
 let mcpTestInFlight = false;
+let lastApplied: { token: number; files: AppliedFile[] } | null = null;
+let nextUndoToken = 1;
 
 const DEFAULT_MCP_TEST_TIMEOUT_SEC = 10;
 const DARK_BG = "#101418";
@@ -106,6 +110,26 @@ function toPreview(edits: FileEdit[], baseHashes: BaseHashes): PreviewResult {
   return { ok: true, files };
 }
 
+/** Applies edits and, on success, remembers what each file held before so the apply can be undone. */
+function applyUndoable(edits: FileEdit[], baseHashes: BaseHashes): ApplyResult {
+  const prevTexts = edits.map((edit) => readTextIfExists(edit.path));
+  const createdDirs = edits.map((edit) => createdDirOf(edit, (dir) => fs.existsSync(dir)));
+  const outcome = applyFileEdits(userData(), edits, baseHashes);
+  if (outcome.status === "conflict") return { status: "conflict", path: outcome.conflictPath ?? "" };
+  const token = nextUndoToken;
+  nextUndoToken += 1;
+  lastApplied = {
+    token,
+    files: edits.map((edit, i) => ({
+      path: edit.path,
+      prevText: prevTexts[i] ?? null,
+      writtenHash: hashOrNull(edit.newText),
+      ...(createdDirs[i] === undefined ? {} : { createdDir: createdDirs[i] }),
+    })),
+  };
+  return { status: "ok", undoToken: token };
+}
+
 function registerIpc(): void {
   ipcMain.handle(CHANNELS.scan, () => runScan(HOME, loadAppConfig(userData()).projects, app.getVersion()));
 
@@ -121,10 +145,9 @@ function registerIpc(): void {
   ipcMain.handle(CHANNELS.apply, (_e, mutation: Mutation, baseHashes: BaseHashes): ApplyResult => {
     try {
       const { edits } = planFresh(mutation);
-      const outcome = applyFileEdits(userData(), edits, baseHashes);
-      if (outcome.status === "conflict") return { status: "conflict", path: outcome.conflictPath ?? "" };
-      restartWatcher();
-      return { status: "ok" };
+      const result = applyUndoable(edits, baseHashes);
+      if (result.status === "ok") restartWatcher();
+      return result;
     } catch (err) {
       return { status: "error", message: err instanceof Error ? err.message : String(err) };
     }
@@ -185,7 +208,23 @@ function registerIpc(): void {
       const current = readTextIfExists(sourcePath);
       if (hashOrNull(current) !== baseHash) return { status: "conflict", path: sourcePath };
       if (current !== null) writeBackup(userData(), sourcePath, current);
-      applyFileEdits(userData(), [{ path: sourcePath, newText: backupText }], { [sourcePath]: baseHash });
+      return applyUndoable([{ path: sourcePath, newText: backupText }], { [sourcePath]: baseHash });
+    } catch (err) {
+      return { status: "error", message: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle(CHANNELS.undoLastApply, (_e, undoToken: number): ApplyResult => {
+    try {
+      if (!lastApplied || lastApplied.token !== undoToken) {
+        return { status: "error", message: "Only the most recent save can be undone. Use Backups to restore older versions." };
+      }
+      for (const file of lastApplied.files) checkPath(file.path);
+      const { edits, baseHashes } = planUndo(lastApplied.files);
+      const outcome = applyFileEdits(userData(), edits, baseHashes);
+      if (outcome.status === "conflict") return { status: "conflict", path: outcome.conflictPath ?? "" };
+      lastApplied = null;
+      restartWatcher();
       return { status: "ok" };
     } catch (err) {
       return { status: "error", message: err instanceof Error ? err.message : String(err) };

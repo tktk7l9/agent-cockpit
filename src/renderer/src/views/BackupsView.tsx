@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { formatBackupStamp } from "../../../lib/backup-stamp";
 import { EmptyState } from "../components/ui";
 import { useStore } from "../store";
 
@@ -43,7 +44,7 @@ export function BackupsView(): React.JSX.Element {
               <td className="mono ellipsis" title={b.sourcePath}>
                 {b.sourcePath}
               </td>
-              <td className="muted">{b.timestamp.replace(/T/, " ").replace(/-(\d+)Z?$/, ".$1")}</td>
+              <td className="muted">{formatBackupStamp(b.timestamp)}</td>
               <td className="muted">{formatSize(b.size)}</td>
               <td>
                 <button className="btn btn-small" onClick={() => void requestRestorePreview(b.id)}>

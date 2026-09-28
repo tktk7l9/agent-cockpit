@@ -1,12 +1,14 @@
 import { useMemo, useState } from "react";
+import { draftKey } from "../../../lib/drafts";
 import { mcpSecretValues, type McpInput } from "../../../lib/agents/mcp-common";
 import type { ProbeResult } from "../../../lib/mcp-probe";
 import type { McpServerEntity, McpTransport, ProjectInfo } from "../../../lib/model/types";
 import type { McpTargetRef } from "../../../lib/mutations";
 import { validateMcpInput } from "../../../lib/validate";
 import { KvEditor } from "../components/KvEditor";
-import { AgentBadge, EmptyState, RevealButton, ScopeTag } from "../components/ui";
+import { AgentBadge, DraftStatus, EmptyState, EntityRow, Field, RevealButton, ScopeTag, Switch, UnsavedTag } from "../components/ui";
 import { entitiesFor, useStore } from "../store";
+import { useDraft } from "../useDraft";
 
 interface TargetOption {
   label: string;
@@ -48,22 +50,22 @@ function ApprovalSwitch({
   return (
     <div className="field">
       <label>Claude Code approval</label>
-      <button
-        className={`switch ${entity.enabled ? "on" : ""}`}
-        role="switch"
-        aria-checked={entity.enabled === true}
-        onClick={() =>
-          void requestPreview({
-            op: "toggleMcpJsonServer",
-            claudeJsonPath: `${home}/.claude.json`,
-            projectPath,
-            name: entity.name,
-            enabled: !(entity.enabled ?? false),
-          })
+      <Switch
+        on={entity.enabled === true}
+        label={`Claude Code approval for ${entity.name}`}
+        onToggle={() =>
+          void requestPreview(
+            {
+              op: "toggleMcpJsonServer",
+              claudeJsonPath: `${home}/.claude.json`,
+              projectPath,
+              name: entity.name,
+              enabled: !(entity.enabled ?? false),
+            },
+            { subject: entity.name },
+          )
         }
-      >
-        <span className="knob" />
-      </button>
+      />
       <p className="muted small">
         Stored in ~/.claude.json (projects.{"{path}"}). If enableAllProjectMcpServers is set there, it may take
         precedence over this per-server flag.
@@ -100,19 +102,20 @@ export function McpView(): React.JSX.Element {
         {entities.length === 0 && <EmptyState text="No MCP servers found." />}
         <ul className="entity-list">
           {entities.map((e) => (
-            <li key={e.id} className={e.id === selectedId ? "selected" : ""} onClick={() => select(e.id)}>
+            <EntityRow key={e.id} selected={e.id === selectedId} onSelect={() => select(e.id)}>
               <div className="entity-row-top">
                 <strong>{e.name}</strong>
                 <AgentBadge agent={e.agent} />
                 <ScopeTag scope={e.scope} />
                 {e.enabled === false && <span className="pill pill-del">disabled</span>}
                 {e.enabled === undefined && e.source.kind === "mcpjson" && <span className="tag">unapproved</span>}
+                <UnsavedTag draftKey={e.id} />
               </div>
               <div className="entity-row-sub">
                 <span className="tag">{e.transport}</span>
                 <span className="muted mono ellipsis">{summary(e)}</span>
               </div>
-            </li>
+            </EntityRow>
           ))}
         </ul>
       </div>
@@ -134,28 +137,23 @@ function McpEditor({
 }): React.JSX.Element {
   const requestPreview = useStore((s) => s.requestPreview);
   const stopEditing = useStore((s) => s.stopEditing);
-  const setDirty = useStore((s) => s.setDirty);
+  const key = draftKey("mcp", entity?.id);
 
   const options = useMemo(() => targetOptions(home, projects), [home, projects]);
-  const [targetIndex, setTargetIndex] = useState(0);
-  const target = entity ? targetOf(entity) : (options[targetIndex] as TargetOption).target;
+  const [targetIndex, setTargetIndex] = useDraft(key, "targetIndex", 0);
+  const target = entity ? targetOf(entity) : (options[Math.min(targetIndex, options.length - 1)] as TargetOption).target;
 
-  const [name, setName] = useState(entity?.name ?? "");
-  const [transport, setTransport] = useState<McpTransport>(entity?.transport ?? "stdio");
-  const [command, setCommand] = useState(entity?.command ?? "");
-  const [argsText, setArgsText] = useState((entity?.args ?? []).join("\n"));
-  const [url, setUrl] = useState(entity?.url ?? "");
-  const [env, setEnv] = useState<[string, string][]>(Object.entries(entity?.env ?? {}));
-  const [headers, setHeaders] = useState<[string, string][]>(Object.entries(entity?.headers ?? {}));
-  const [timeout, setTimeoutSec] = useState(entity?.startupTimeoutSec?.toString() ?? "");
+  const [name, setName] = useDraft(key, "name", entity?.name ?? "");
+  const [transport, setTransport] = useDraft<McpTransport>(key, "transport", entity?.transport ?? "stdio");
+  const [command, setCommand] = useDraft(key, "command", entity?.command ?? "");
+  const [argsText, setArgsText] = useDraft(key, "args", (entity?.args ?? []).join("\n"));
+  const [url, setUrl] = useDraft(key, "url", entity?.url ?? "");
+  const [env, setEnv] = useDraft<[string, string][]>(key, "env", Object.entries(entity?.env ?? {}));
+  const [headers, setHeaders] = useDraft<[string, string][]>(key, "headers", Object.entries(entity?.headers ?? {}));
+  const [timeout, setTimeoutSec] = useDraft(key, "timeout", entity?.startupTimeoutSec?.toString() ?? "");
   const [errors, setErrors] = useState<string[]>([]);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<ProbeResult | null>(null);
-
-  const touch = <T,>(setter: (v: T) => void) => (v: T) => {
-    setter(v);
-    setDirty(true);
-  };
 
   const buildInput = (): McpInput => ({
     name: name.trim(),
@@ -183,12 +181,12 @@ function McpEditor({
       return;
     }
     setErrors([]);
-    void requestPreview({ op: "upsertMcp", target, prevName: entity?.name, input });
+    void requestPreview({ op: "upsertMcp", target, prevName: entity?.name, input }, { draftKey: key, subject: input.name });
   };
 
   const remove = (): void => {
     if (!entity) return;
-    void requestPreview({ op: "deleteMcp", target, name: entity.name });
+    void requestPreview({ op: "deleteMcp", target, name: entity.name }, { draftKey: key, subject: entity.name });
   };
 
   const runTest = async (): Promise<void> => {
@@ -221,16 +219,17 @@ function McpEditor({
       </div>
 
       {!entity && (
-        <div className="field">
-          <label>Write to</label>
-          <select value={targetIndex} onChange={(e) => setTargetIndex(Number(e.target.value))}>
-            {options.map((o, i) => (
-              <option key={o.label} value={i}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        <Field label="Write to">
+          {(id) => (
+            <select id={id} value={targetIndex} onChange={(e) => setTargetIndex(Number(e.target.value))}>
+              {options.map((o, i) => (
+                <option key={o.label} value={i}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          )}
+        </Field>
       )}
       {entity && (
         <p className="muted small">
@@ -242,53 +241,56 @@ function McpEditor({
         <ApprovalSwitch home={home} projectPath={entity.scope.projectPath} entity={entity} />
       ) : null}
 
-      <div className="field">
-        <label>Name</label>
-        <input value={name} onChange={(e) => touch(setName)(e.target.value)} placeholder="my-server" />
-      </div>
+      <Field label="Name">
+        {(id) => <input id={id} value={name} onChange={(e) => setName(e.target.value)} placeholder="my-server" />}
+      </Field>
 
-      <div className="field">
-        <label>Transport</label>
-        <select value={transport} onChange={(e) => touch(setTransport)(e.target.value as McpTransport)}>
-          <option value="stdio">stdio (local command)</option>
-          <option value="http">http (remote)</option>
-          <option value="sse">sse (remote, legacy)</option>
-        </select>
-      </div>
+      <Field label="Transport">
+        {(id) => (
+          <select id={id} value={transport} onChange={(e) => setTransport(e.target.value as McpTransport)}>
+            <option value="stdio">stdio (local command)</option>
+            <option value="http">http (remote)</option>
+            <option value="sse">sse (remote, legacy)</option>
+          </select>
+        )}
+      </Field>
 
       {transport === "stdio" ? (
         <>
-          <div className="field">
-            <label>Command</label>
-            <input value={command} onChange={(e) => touch(setCommand)(e.target.value)} placeholder="npx" className="mono" />
-          </div>
-          <div className="field">
-            <label>Arguments (one per line)</label>
-            <textarea
-              value={argsText}
-              rows={3}
-              className="mono"
-              onChange={(e) => touch(setArgsText)(e.target.value)}
-              placeholder={"-y\n@scope/mcp-server"}
-            />
-          </div>
-          <KvEditor label="Environment variables" entries={env} onChange={touch(setEnv)} maskValues />
+          <Field label="Command">
+            {(id) => (
+              <input id={id} value={command} onChange={(e) => setCommand(e.target.value)} placeholder="npx" className="mono" />
+            )}
+          </Field>
+          <Field label="Arguments (one per line)">
+            {(id) => (
+              <textarea
+                id={id}
+                value={argsText}
+                rows={3}
+                className="mono"
+                onChange={(e) => setArgsText(e.target.value)}
+                placeholder={"-y\n@scope/mcp-server"}
+              />
+            )}
+          </Field>
+          <KvEditor label="Environment variables" entries={env} onChange={setEnv} maskValues />
         </>
       ) : (
         <>
-          <div className="field">
-            <label>URL</label>
-            <input value={url} onChange={(e) => touch(setUrl)(e.target.value)} placeholder="https://…" className="mono" />
-          </div>
-          <KvEditor label="Headers" entries={headers} onChange={touch(setHeaders)} maskValues />
+          <Field label="URL">
+            {(id) => (
+              <input id={id} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" className="mono" />
+            )}
+          </Field>
+          <KvEditor label="Headers" entries={headers} onChange={setHeaders} maskValues />
         </>
       )}
 
       {target.kind === "codex" && (
-        <div className="field">
-          <label>Startup timeout (sec)</label>
-          <input value={timeout} onChange={(e) => touch(setTimeoutSec)(e.target.value)} placeholder="10" />
-        </div>
+        <Field label="Startup timeout (sec)">
+          {(id) => <input id={id} value={timeout} onChange={(e) => setTimeoutSec(e.target.value)} placeholder="10" />}
+        </Field>
       )}
 
       {entity && Object.keys(entity.extras).length > 0 && (
@@ -299,7 +301,7 @@ function McpEditor({
       )}
 
       {errors.length > 0 && (
-        <div className="banner banner-warn">
+        <div className="banner banner-warn" role="alert">
           {errors.map((e) => (
             <div key={e}>{e}</div>
           ))}
@@ -321,6 +323,7 @@ function McpEditor({
           </button>
         )}
         <span className="spacer" />
+        <DraftStatus draftKey={key} />
         {mcpSecretValues(Object.fromEntries(env), Object.fromEntries(headers)).length > 0 && (
           <span className="muted small">env/header values are masked in the diff</span>
         )}

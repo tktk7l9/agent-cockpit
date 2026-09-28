@@ -14,6 +14,7 @@ const api: CockpitApi = {
   listBackups: () => ipcRenderer.invoke(CHANNELS.listBackups),
   previewRestore: (id: string) => ipcRenderer.invoke(CHANNELS.previewRestore, id),
   applyRestore: (id: string, baseHash: string | null) => ipcRenderer.invoke(CHANNELS.applyRestore, id, baseHash),
+  undoLastApply: (undoToken: number) => ipcRenderer.invoke(CHANNELS.undoLastApply, undoToken),
   reveal: (path: string) => ipcRenderer.invoke(CHANNELS.reveal, path),
   mcpTest: (input: McpInput, timeoutSec?: number) => ipcRenderer.invoke(CHANNELS.mcpTest, input, timeoutSec),
   checkUpdate: () => ipcRenderer.invoke(CHANNELS.checkUpdate),

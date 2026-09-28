@@ -42,17 +42,33 @@ export function DiffModal(): React.JSX.Element | null {
 
   if (!preview) return null;
 
+  const verb = preview.action === "delete" ? "Delete" : preview.action === "restore" ? "Restore" : "Save";
+  const subject = preview.options.subject;
+  const title =
+    preview.action === "restore"
+      ? "Restore backup"
+      : preview.action === "delete"
+        ? `Delete ${subject ?? "file"}`
+        : `Review changes${subject ? ` to ${subject}` : ""}`;
   const changed = preview.files.some((f) => f.diff.some((l) => l.type === "add" || l.type === "del") || f.deletes);
 
   return (
     <div className="modal-backdrop" onClick={cancelPreview}>
-      <div className="modal" ref={modalRef} onClick={(e) => e.stopPropagation()} onKeyDown={onKeyDown}>
+      <div
+        className="modal"
+        ref={modalRef}
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={onKeyDown}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="diff-modal-title"
+      >
         <header>
-          <h2>{preview.mutation ? "Review changes" : "Restore backup"}</h2>
-          <span className="muted">{preview.files.length} file(s)</span>
+          <h2 id="diff-modal-title">{title}</h2>
+          <span className="muted">{preview.files.length === 1 ? "1 file" : `${preview.files.length} files`}</span>
         </header>
         {preview.conflictPath && (
-          <div className="banner banner-warn">
+          <div className="banner banner-warn" role="alert">
             <span>
               File changed on disk since preview: <code>{preview.conflictPath}</code> — Re-preview to refresh the
               diff against the current file, or Cancel and edit again.
@@ -88,11 +104,11 @@ export function DiffModal(): React.JSX.Element | null {
             Cancel
           </button>
           <button
-            className="btn btn-primary"
+            className={preview.action === "delete" ? "btn btn-danger" : "btn btn-primary"}
             disabled={preview.applying || !changed || preview.conflictPath !== undefined}
             onClick={() => void confirmApply()}
           >
-            {preview.applying ? "Applying…" : "Apply"}
+            {preview.applying ? `${verb.replace(/e$/, "")}ing…` : verb}
           </button>
         </footer>
       </div>

@@ -1,5 +1,5 @@
 import type { PluginEntity } from "../../../lib/model/types";
-import { AgentBadge, EmptyState, RevealButton } from "../components/ui";
+import { AgentBadge, EmptyState, RevealButton, Switch } from "../components/ui";
 import { entitiesFor, useStore } from "../store";
 
 export function PluginsView(): React.JSX.Element {
@@ -10,13 +10,16 @@ export function PluginsView(): React.JSX.Element {
   const entities = entitiesFor(data, "plugin", agentFilter) as PluginEntity[];
 
   const toggle = (e: PluginEntity): void => {
-    void requestPreview({
-      op: "togglePlugin",
-      agent: e.agent === "claude" ? "claude" : "codex",
-      filePath: e.filePath,
-      key: e.key,
-      enabled: !e.enabled,
-    });
+    void requestPreview(
+      {
+        op: "togglePlugin",
+        agent: e.agent === "claude" ? "claude" : "codex",
+        filePath: e.filePath,
+        key: e.key,
+        enabled: !e.enabled,
+      },
+      { subject: e.key.split("@")[0] },
+    );
   };
 
   return (
@@ -46,14 +49,7 @@ export function PluginsView(): React.JSX.Element {
               <td className="muted">{e.marketplace}</td>
               <td className="muted">{e.version ?? "—"}</td>
               <td>
-                <button
-                  className={`switch ${e.enabled ? "on" : ""}`}
-                  role="switch"
-                  aria-checked={e.enabled}
-                  onClick={() => toggle(e)}
-                >
-                  <span className="knob" />
-                </button>
+                <Switch on={e.enabled} label={`Enable ${e.key.split("@")[0]}`} onToggle={() => toggle(e)} />
               </td>
               <td>
                 <RevealButton path={e.filePath} />

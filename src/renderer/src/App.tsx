@@ -36,6 +36,8 @@ export function App(): React.JSX.Element {
   const setAgentFilter = useStore((s) => s.setAgentFilter);
   const stale = useStore((s) => s.stale);
   const refresh = useStore((s) => s.refresh);
+  const reloadDiscardingDrafts = useStore((s) => s.reloadDiscardingDrafts);
+  const dismissToast = useStore((s) => s.dismissToast);
   const markStaleOrRefresh = useStore((s) => s.markStaleOrRefresh);
   const toast = useStore((s) => s.toast);
   const openPalette = useStore((s) => s.openPalette);
@@ -74,6 +76,7 @@ export function App(): React.JSX.Element {
             <button
               key={s.key}
               className={`nav-item ${section === s.key ? "active" : ""}`}
+              aria-current={section === s.key ? "page" : undefined}
               onClick={() => setSection(s.key)}
             >
               <span>{s.label}</span>
@@ -101,11 +104,12 @@ export function App(): React.JSX.Element {
               v{data.version} — Check for updates
             </button>
           )}
-          <div className="agent-filter">
+          <div className="agent-filter" role="group" aria-label="Filter by agent">
             {AGENTS.map((a) => (
               <button
                 key={a}
                 className={`chip chip-${a} ${agentFilter === a ? "active" : ""}`}
+                aria-pressed={agentFilter === a}
                 onClick={() => setAgentFilter(a)}
               >
                 {a === "all" ? "All" : AGENT_LABEL[a]}
@@ -129,7 +133,7 @@ export function App(): React.JSX.Element {
           <div className="banner banner-warn banner-top">
             Config files changed on disk. Your draft is still intact — you can keep editing and Save… (the diff
             preview always compares against the current file).
-            <button className="btn btn-small" onClick={() => void refresh()}>
+            <button className="btn btn-small" onClick={() => void reloadDiscardingDrafts()}>
               Reload (discard draft)
             </button>
           </div>
@@ -154,7 +158,29 @@ export function App(): React.JSX.Element {
       <DiffModal />
       <ScanErrorsModal />
       <CommandPalette />
-      {toast && <div className={`toast toast-${toast.kind}`}>{toast.text}</div>}
+      {toast && (
+        <div className={`toast toast-${toast.kind}`} role={toast.kind === "err" ? "alert" : "status"}>
+          <span>{toast.text}</span>
+          {toast.action && (
+            <button
+              type="button"
+              className="toast-action"
+              onClick={() => {
+                const run = toast.action?.run;
+                dismissToast();
+                run?.();
+              }}
+            >
+              {toast.action.label}
+            </button>
+          )}
+          {(toast.kind === "err" || toast.action) && (
+            <button type="button" className="toast-close" aria-label="Dismiss" onClick={dismissToast}>
+              ✕
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
