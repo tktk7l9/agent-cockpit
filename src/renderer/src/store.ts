@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { clearDraft, withDraftField, type Drafts } from "../../lib/drafts";
+import { clearDraft, clearDraftFields, hasDraft, openDraftKey, withDraftField, type Drafts } from "../../lib/drafts";
 import type { AgentId, Entity, EntityKind } from "../../lib/model/types";
 import type { Mutation } from "../../lib/mutations";
 import type { BackupInfo, PreviewFile, ScanResultPayload } from "../../shared/ipc";
@@ -45,6 +45,8 @@ export type PreviewAction = "save" | "delete" | "restore";
 export interface PreviewOptions {
   /** Draft cleared once the write succeeds (see lib/drafts). */
   draftKey?: string;
+  /** Clear only these fields of the draft (the form that was saved); default clears the whole draft. */
+  draftFields?: string[];
   /** Name shown in the preview title and the result toast. */
   subject?: string;
 }
@@ -167,20 +169,28 @@ export const useStore = create<CockpitState>((set, get) => ({
     });
   },
 
+  // Discards only the draft of the editor on screen; drafts of other entities live in the
+  // store and survive a rescan untouched.
   reloadDiscardingDrafts: async () => {
-    const drafts = get().drafts;
-    set({ drafts: {} });
+    const { selectedId, creating, section } = get();
+    const key = openDraftKey(selectedId, creating, section);
+    const draft = key === null ? undefined : get().drafts[key];
+    if (key !== null) set({ drafts: clearDraft(get().drafts, key) });
     await get().refresh();
-    if (Object.keys(drafts).length > 0) {
-      get().showToast("ok", "Reloaded from disk — drafts discarded", {
+    if (key !== null && draft) {
+      get().showToast("ok", "Reloaded from disk — draft discarded", {
         label: "Undo",
-        run: () => set({ drafts: { ...drafts, ...get().drafts } }),
+        run: () => set({ drafts: { ...get().drafts, [key]: draft } }),
       });
     }
   },
 
+  // Only the editor on screen can be disrupted by a rescan, so a forgotten draft elsewhere
+  // must not freeze auto-refresh.
   markStaleOrRefresh: () => {
-    if (Object.keys(get().drafts).length > 0 || get().preview) set({ stale: true });
+    const { selectedId, creating, section, drafts, preview } = get();
+    const key = openDraftKey(selectedId, creating, section);
+    if (preview || (key !== null && hasDraft(drafts, key))) set({ stale: true });
     else void get().refresh();
   },
 
@@ -229,12 +239,17 @@ export const useStore = create<CockpitState>((set, get) => ({
       ? await window.cockpit.apply(preview.mutation, baseHashes)
       : await window.cockpit.applyRestore(preview.restoreId as string, preview.files[0]?.baseHash ?? null);
     if (result.status === "ok") {
-      const draftKey = preview.options.draftKey;
+      const { draftKey, draftFields } = preview.options;
       const done = DONE_TEXT[preview.action];
+      const drafts = get().drafts;
       set({
         preview: null,
         creating: false,
-        drafts: draftKey ? clearDraft(get().drafts, draftKey) : get().drafts,
+        drafts: !draftKey
+          ? drafts
+          : draftFields
+            ? clearDraftFields(drafts, draftKey, draftFields)
+            : clearDraft(drafts, draftKey),
       });
       const token = result.undoToken;
       get().showToast(

@@ -162,7 +162,15 @@ export function App(): React.JSX.Element {
         <div className={`toast toast-${toast.kind}`} role={toast.kind === "err" ? "alert" : "status"}>
           <span>{toast.text}</span>
           {toast.action && (
-            <button type="button" className="toast-action" onClick={toast.action.run}>
+            <button
+              type="button"
+              className="toast-action"
+              onClick={() => {
+                const run = toast.action?.run;
+                dismissToast();
+                run?.();
+              }}
+            >
               {toast.action.label}
             </button>
           )}

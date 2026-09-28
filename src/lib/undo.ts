@@ -11,6 +11,8 @@ export interface AppliedFile {
   prevText: string | null;
   /** sha256 of what the apply left on disk; null = the apply deleted this file. */
   writtenHash: string | null;
+  /** Directory the apply created for this file (e.g. a new skill's folder); undo removes it again if left empty. */
+  createdDir?: string;
 }
 
 export interface UndoPlan {
@@ -29,10 +31,19 @@ export function planUndo(applied: AppliedFile[]): UndoPlan {
   for (const file of applied) {
     edits.push(
       file.prevText === null
-        ? { path: file.path, newText: null }
+        ? file.createdDir === undefined
+          ? { path: file.path, newText: null }
+          : { path: file.path, newText: null, deleteDirIfEmpty: file.createdDir }
         : { path: file.path, newText: file.prevText, createDirs: [parentDir(file.path)] },
     );
     baseHashes[file.path] = file.writtenHash;
   }
   return { edits, baseHashes };
+}
+
+/** The innermost directory an edit creates, given which directories existed before the write. */
+export function createdDirOf(edit: FileEdit, existed: (dir: string) => boolean): string | undefined {
+  if (edit.newText === null) return undefined;
+  const dir = parentDir(edit.path);
+  return (edit.createDirs ?? []).includes(dir) && !existed(dir) ? dir : undefined;
 }

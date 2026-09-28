@@ -29,3 +29,22 @@ export function clearDraft(drafts: Drafts, key: string): Drafts {
   delete next[key];
   return next;
 }
+
+/**
+ * Clears only the given fields of one draft (a file edited through several
+ * independent forms, e.g. settings permissions vs. raw text, saves one form at a
+ * time and must keep the others' unsaved input). Drops the draft once empty.
+ */
+export function clearDraftFields(drafts: Drafts, key: string, fields: readonly string[]): Drafts {
+  const draft = drafts[key];
+  if (!draft) return drafts;
+  const rest = Object.fromEntries(Object.entries(draft).filter(([field]) => !fields.includes(field)));
+  if (Object.keys(rest).length === 0) return clearDraft(drafts, key);
+  return { ...drafts, [key]: rest };
+}
+
+/** Draft key of the editor currently on screen, or null when no editor is open. */
+export function openDraftKey(selectedId: string | null, creating: boolean, section: string): string | null {
+  if (selectedId !== null) return selectedId;
+  return creating ? `new:${section}` : null;
+}

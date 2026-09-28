@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { clearDraft, draftKey, hasDraft, readDraftField, withDraftField, type Drafts } from "../src/lib/drafts";
+import {
+  clearDraft,
+  clearDraftFields,
+  draftKey,
+  hasDraft,
+  openDraftKey,
+  readDraftField,
+  withDraftField,
+  type Drafts,
+} from "../src/lib/drafts";
 
 describe("drafts", () => {
   it("keys an existing entity by id and a new one by kind", () => {
@@ -30,5 +39,36 @@ describe("drafts", () => {
     expect(hasDraft(cleared, "a")).toBe(false);
     expect(hasDraft(cleared, "b")).toBe(true);
     expect(clearDraft(d, "zzz")).toBe(d);
+  });
+});
+
+describe("clearDraftFields", () => {
+  it("clears only the saved form's fields and keeps the rest of the draft", () => {
+    const d = withDraftField(withDraftField({}, "s", "perm.allow", ["Bash(ls)"]), "s", "raw", "{}");
+    expect(clearDraftFields(d, "s", ["perm.allow", "perm.deny"])).toEqual({ s: { raw: "{}" } });
+  });
+
+  it("drops the draft when no field is left", () => {
+    const d = withDraftField({}, "s", "raw", "{}");
+    expect(hasDraft(clearDraftFields(d, "s", ["raw"]), "s")).toBe(false);
+  });
+
+  it("returns the same map when the key has no draft", () => {
+    const d: Drafts = {};
+    expect(clearDraftFields(d, "s", ["raw"])).toBe(d);
+  });
+});
+
+describe("openDraftKey", () => {
+  it("uses the selected entity id first", () => {
+    expect(openDraftKey("claude:mcp:x", true, "mcp")).toBe("claude:mcp:x");
+  });
+
+  it("uses the new-entity key of the section while creating", () => {
+    expect(openDraftKey(null, true, "skill")).toBe(draftKey("skill", undefined));
+  });
+
+  it("is null when no editor is open", () => {
+    expect(openDraftKey(null, false, "mcp")).toBeNull();
   });
 });

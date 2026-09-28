@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, screen, shell } from "electron";
+import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import chokidar, { type FSWatcher } from "chokidar";
@@ -9,7 +10,7 @@ import type { ProbeResult } from "../lib/mcp-probe";
 import type { FileEdit } from "../lib/model/types";
 import { mutationReadPaths, planMutation, type Mutation } from "../lib/mutations";
 import { watchPaths } from "../lib/paths";
-import { planUndo, type AppliedFile } from "../lib/undo";
+import { createdDirOf, planUndo, type AppliedFile } from "../lib/undo";
 import { compareVersions } from "../lib/version";
 import { boundsVisible, type Rect } from "../lib/window-bounds";
 import {
@@ -112,6 +113,7 @@ function toPreview(edits: FileEdit[], baseHashes: BaseHashes): PreviewResult {
 /** Applies edits and, on success, remembers what each file held before so the apply can be undone. */
 function applyUndoable(edits: FileEdit[], baseHashes: BaseHashes): ApplyResult {
   const prevTexts = edits.map((edit) => readTextIfExists(edit.path));
+  const createdDirs = edits.map((edit) => createdDirOf(edit, (dir) => fs.existsSync(dir)));
   const outcome = applyFileEdits(userData(), edits, baseHashes);
   if (outcome.status === "conflict") return { status: "conflict", path: outcome.conflictPath ?? "" };
   const token = nextUndoToken;
@@ -122,6 +124,7 @@ function applyUndoable(edits: FileEdit[], baseHashes: BaseHashes): ApplyResult {
       path: edit.path,
       prevText: prevTexts[i] ?? null,
       writtenHash: hashOrNull(edit.newText),
+      ...(createdDirs[i] === undefined ? {} : { createdDir: createdDirs[i] }),
     })),
   };
   return { status: "ok", undoToken: token };

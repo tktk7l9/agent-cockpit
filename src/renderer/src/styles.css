@@ -163,6 +163,7 @@ nav {
   background: transparent;
   color: var(--text-muted);
   border-radius: 20px;
+  min-height: 28px;
   padding: 3px 10px;
   font-size: 11px;
   cursor: pointer;
@@ -179,6 +180,7 @@ nav {
 .chip-cursor.active { border-color: var(--cursor); color: var(--cursor); }
 
 .scan-errors {
+  min-height: 28px;
   font-size: 11px;
   color: var(--warn);
   padding: 4px 6px;
@@ -194,6 +196,7 @@ nav {
 }
 
 .update-check {
+  min-height: 28px;
   font-size: 11px;
   color: var(--text-muted);
   padding: 4px 6px;
@@ -478,7 +481,14 @@ select:focus {
   font-size: 12px;
 }
 
+/* Small buttons still get a 28px (7mm+) hit target (SHIG 13). */
+.btn-small,
 .btn-icon {
+  min-height: 28px;
+}
+
+.btn-icon {
+  min-width: 28px;
   padding: 4px 8px;
   flex-shrink: 0;
 }
@@ -541,6 +551,13 @@ select:focus {
   background: var(--bg-raised);
   position: relative;
   cursor: pointer;
+}
+
+/* Invisible margin grows the 34x20 track to a 42x28 hit target (SHIG 13). */
+.switch::before {
+  content: "";
+  position: absolute;
+  inset: -5px -5px;
 }
 
 .switch .knob {
@@ -740,6 +757,8 @@ code {
   color: inherit;
   font: inherit;
   cursor: pointer;
+  min-width: 28px;
+  min-height: 28px;
   padding: 4px 6px;
   border-radius: 4px;
 }

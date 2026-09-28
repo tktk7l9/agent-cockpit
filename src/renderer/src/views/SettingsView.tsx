@@ -56,6 +56,43 @@ export function SettingsView(): React.JSX.Element {
   );
 }
 
+// Each form on this screen saves on its own, so a save clears only its own draft fields
+// and keeps unsaved input in the other forms (SHIG 38).
+const PERMISSION_FIELDS = ["perm.mode", "perm.custom", "perm.allow", "perm.deny"];
+const knownField = (settingKey: string): string => `known.${settingKey}`;
+
+function knownText(value: unknown): string {
+  return typeof value === "string" ? value : JSON.stringify(value);
+}
+
+function KnownSettingRow({ entity, settingKey }: { entity: SettingsEntity; settingKey: string }): React.JSX.Element {
+  const requestPreview = useStore((s) => s.requestPreview);
+  const [value, setValue] = useDraft(entity.id, knownField(settingKey), knownText(entity.known[settingKey]));
+
+  const save = (): void => {
+    void requestPreview(
+      {
+        op: "setSetting",
+        filePath: entity.filePath,
+        format: entity.format,
+        keyPath: entity.format === "json" ? settingKey.split(".") : [settingKey],
+        value: parseInputValue(value),
+      },
+      { draftKey: entity.id, draftFields: [knownField(settingKey)], subject: settingKey },
+    );
+  };
+
+  return (
+    <div className="kv-row">
+      <input value={settingKey} readOnly className="mono" aria-label="Setting key" />
+      <input value={value} className="mono" aria-label={`Value of ${settingKey}`} onChange={(e) => setValue(e.target.value)} />
+      <button className="btn btn-small" onClick={save}>
+        Set…
+      </button>
+    </div>
+  );
+}
+
 function PermissionsSection({ entity }: { entity: SettingsEntity }): React.JSX.Element {
   const requestPreview = useStore((s) => s.requestPreview);
   const key = entity.id;
@@ -79,7 +116,7 @@ function PermissionsSection({ entity }: { entity: SettingsEntity }): React.JSX.E
         allow: allow.filter((a) => a.trim() !== ""),
         deny: deny.filter((d) => d.trim() !== ""),
       },
-      { draftKey: key, subject: `${entity.name} permissions` },
+      { draftKey: key, draftFields: PERMISSION_FIELDS, subject: `${entity.name} permissions` },
     );
   };
 
@@ -122,25 +159,6 @@ function SettingsEditor({ entity }: { entity: SettingsEntity }): React.JSX.Eleme
   const key = entity.id;
 
   const [raw, setRaw] = useDraft(key, "raw", entity.rawText);
-  const [knownDrafts, setKnownDrafts] = useDraft<Record<string, string>>(
-    key,
-    "known",
-    Object.fromEntries(Object.entries(entity.known).map(([k, v]) => [k, typeof v === "string" ? v : JSON.stringify(v)])),
-  );
-
-  const setKnown = (settingKey: string): void => {
-    const draft = knownDrafts[settingKey] ?? "";
-    void requestPreview(
-      {
-        op: "setSetting",
-        filePath: entity.filePath,
-        format: entity.format,
-        keyPath: entity.format === "json" ? settingKey.split(".") : [settingKey],
-        value: parseInputValue(draft),
-      },
-      { draftKey: key, subject: settingKey },
-    );
-  };
 
   return (
     <div className="editor-pane">
@@ -163,18 +181,7 @@ function SettingsEditor({ entity }: { entity: SettingsEntity }): React.JSX.Eleme
         <div className="field">
           <label>Quick edit</label>
           {Object.keys(entity.known).map((settingKey) => (
-            <div className="kv-row" key={settingKey}>
-              <input value={settingKey} readOnly className="mono" aria-label="Setting key" />
-              <input
-                value={knownDrafts[settingKey] ?? ""}
-                className="mono"
-                aria-label={`Value of ${settingKey}`}
-                onChange={(e) => setKnownDrafts({ ...knownDrafts, [settingKey]: e.target.value })}
-              />
-              <button className="btn btn-small" onClick={() => setKnown(settingKey)}>
-                Set…
-              </button>
-            </div>
+            <KnownSettingRow key={settingKey} entity={entity} settingKey={settingKey} />
           ))}
         </div>
       )}
@@ -197,7 +204,7 @@ function SettingsEditor({ entity }: { entity: SettingsEntity }): React.JSX.Eleme
           onClick={() =>
             void requestPreview(
               { op: "writeRaw", filePath: entity.filePath, format: entity.format, newText: raw },
-              { draftKey: key, subject: entity.name },
+              { draftKey: key, draftFields: ["raw"], subject: entity.name },
             )
           }
         >
