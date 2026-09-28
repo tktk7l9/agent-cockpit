@@ -226,7 +226,8 @@ nav {
 }
 
 .list-pane {
-  width: 380px;
+  /* Narrower at the 900px minimum window so the editor keeps room for its fields (SHIG 85). */
+  width: clamp(260px, 32vw, 380px);
   flex-shrink: 0;
   border-right: 1px solid var(--border);
   overflow-y: auto;
@@ -283,9 +284,25 @@ h2 {
 }
 
 .entity-list li {
-  padding: 9px 16px;
-  cursor: pointer;
   border-left: 2px solid transparent;
+}
+
+/* Each row is one <button> so it is reachable by Tab and operable by keyboard (SHIG 94). */
+.entity-row {
+  display: block;
+  width: 100%;
+  padding: 9px 16px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.entity-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .entity-list li:hover {
@@ -510,6 +527,12 @@ select:focus {
 
 /* ---- switch ---- */
 
+.switch-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .switch {
   width: 34px;
   height: 20px;
@@ -694,6 +717,10 @@ code {
   position: fixed;
   bottom: 22px;
   right: 22px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(560px, calc(100vw - 44px));
   padding: 10px 18px;
   border-radius: var(--radius);
   font-size: 13px;
@@ -706,14 +733,35 @@ code {
   to { opacity: 1; transform: none; }
 }
 
+.toast-action,
+.toast-close {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+
+.toast-action {
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.toast-action:hover,
+.toast-close:hover {
+  background: var(--bg-raised);
+}
+
 .toast-ok {
-  background: rgba(63, 185, 80, 0.15);
+  background: linear-gradient(rgba(63, 185, 80, 0.15), rgba(63, 185, 80, 0.15)), var(--bg-panel);
   border: 1px solid var(--ok);
   color: var(--ok);
 }
 
 .toast-err {
-  background: rgba(248, 81, 73, 0.15);
+  background: linear-gradient(rgba(248, 81, 73, 0.15), rgba(248, 81, 73, 0.15)), var(--bg-panel);
   border: 1px solid var(--danger);
   color: var(--danger);
 }

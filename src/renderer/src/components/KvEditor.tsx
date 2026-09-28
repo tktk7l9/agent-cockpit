@@ -30,16 +30,23 @@ export function KvEditor({ label, entries, onChange, maskValues = false }: Props
         const hidden = maskValues && !revealed.has(i);
         return (
           <div className="kv-row" key={i}>
-            <input placeholder="NAME" value={key} onChange={(e) => update(i, e.target.value, value)} />
+            <input placeholder="NAME" aria-label={`${label} name ${i + 1}`} value={key} onChange={(e) => update(i, e.target.value, value)} />
             <input
               placeholder="value"
+              aria-label={`Value of ${key || `${label} ${i + 1}`}`}
               type={hidden ? "password" : "text"}
               value={hidden ? MASK : value}
               readOnly={hidden}
               onChange={(e) => update(i, key, e.target.value)}
             />
             {maskValues && (
-              <button type="button" className="btn btn-icon" title={hidden ? "Reveal" : "Hide"} onClick={() => toggleReveal(i)}>
+              <button
+                type="button"
+                className="btn btn-icon"
+                title={hidden ? "Show value" : "Hide value"}
+                aria-label={hidden ? `Show value of ${key || "entry"}` : `Hide value of ${key || "entry"}`}
+                onClick={() => toggleReveal(i)}
+              >
                 {hidden ? "👁" : "🙈"}
               </button>
             )}
@@ -47,6 +54,7 @@ export function KvEditor({ label, entries, onChange, maskValues = false }: Props
               type="button"
               className="btn btn-icon"
               title="Remove"
+              aria-label={`Remove ${key || "entry"}`}
               onClick={() => onChange(entries.filter((_, j) => j !== i))}
             >
               ✕

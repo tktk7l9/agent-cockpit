@@ -1,8 +1,8 @@
-import { useState } from "react";
 import type { InstructionsEntity } from "../../../lib/model/types";
 import { LazyCodeEditor as CodeEditor } from "../components/LazyCodeEditor";
-import { AgentBadge, EmptyState, RevealButton, ScopeTag } from "../components/ui";
+import { AgentBadge, DraftStatus, EmptyState, EntityRow, RevealButton, ScopeTag, UnsavedTag } from "../components/ui";
 import { entitiesFor, useStore } from "../store";
+import { useDraft } from "../useDraft";
 
 export function InstructionsView(): React.JSX.Element {
   const data = useStore((s) => s.data);
@@ -23,17 +23,18 @@ export function InstructionsView(): React.JSX.Element {
         {entities.length === 0 && <EmptyState text="No instruction files found." />}
         <ul className="entity-list">
           {entities.map((e) => (
-            <li key={e.id} className={e.id === selectedId ? "selected" : ""} onClick={() => select(e.id)}>
+            <EntityRow key={e.id} selected={e.id === selectedId} onSelect={() => select(e.id)}>
               <div className="entity-row-top">
                 <strong>{e.name}</strong>
                 <AgentBadge agent={e.agent} />
                 <ScopeTag scope={e.scope} />
                 {e.readOnly && <span className="tag">read-only</span>}
+                <UnsavedTag draftKey={e.id} />
               </div>
               <div className="entity-row-sub">
                 <span className="muted mono ellipsis">{e.filePath}</span>
               </div>
-            </li>
+            </EntityRow>
           ))}
         </ul>
       </div>
@@ -45,8 +46,7 @@ export function InstructionsView(): React.JSX.Element {
 function InstructionsEditor({ entity }: { entity: InstructionsEntity }): React.JSX.Element {
   const requestPreview = useStore((s) => s.requestPreview);
   const stopEditing = useStore((s) => s.stopEditing);
-  const setDirty = useStore((s) => s.setDirty);
-  const [body, setBody] = useState(entity.body);
+  const [body, setBody] = useDraft(entity.id, "body", entity.body);
 
   return (
     <div className="editor-pane">
@@ -68,15 +68,21 @@ function InstructionsEditor({ entity }: { entity: InstructionsEntity }): React.J
           lang="markdown"
           readOnly={entity.readOnly}
           minHeight="400px"
-          onChange={(v) => { setBody(v); setDirty(true); }}
+          onChange={setBody}
         />
       </div>
       {!entity.readOnly && (
         <div className="editor-actions">
           <span className="spacer" />
+          <DraftStatus draftKey={entity.id} />
           <button
             className="btn btn-primary"
-            onClick={() => void requestPreview({ op: "writeRaw", filePath: entity.filePath, format: "markdown", newText: body })}
+            onClick={() =>
+              void requestPreview(
+                { op: "writeRaw", filePath: entity.filePath, format: "markdown", newText: body },
+                { draftKey: entity.id, subject: entity.name },
+              )
+            }
           >
             Save…
           </button>

@@ -2,6 +2,7 @@
 // all are markdown files with YAML frontmatter in well-known directories.
 
 import { useMemo, useState } from "react";
+import { draftKey } from "../../../lib/drafts";
 import type {
   CommandEntity,
   Entity,
@@ -14,13 +15,14 @@ import { counterpartsOf } from "../../../lib/skill-sync";
 import { validateEntityName, validateSkillInput } from "../../../lib/validate";
 import { LazyCodeEditor as CodeEditor } from "../components/LazyCodeEditor";
 import { SkillCompare } from "../components/SkillCompare";
-import { AgentBadge, EmptyState, RevealButton, ScopeTag } from "../components/ui";
+import { AgentBadge, DraftStatus, EmptyState, EntityRow, Field, RevealButton, ScopeTag, UnsavedTag } from "../components/ui";
 import { entitiesFor, useStore } from "../store";
+import { useDraft } from "../useDraft";
 
 type MdKind = "skill" | "subagent" | "command";
 type MdEntity = SkillEntity | SubagentEntity | CommandEntity;
 
-const TITLES: Record<MdKind, string> = { skill: "Skills", subagent: "Subagents", command: "Slash Commands" };
+const TITLES: Record<MdKind, string> = { skill: "Skills", subagent: "Subagents", command: "Commands" };
 
 interface DirOption {
   label: string;
@@ -104,7 +106,7 @@ export function MarkdownEntityView({ kind }: { kind: MdKind }): React.JSX.Elemen
         {entities.length === 0 && <EmptyState text={`No ${TITLES[kind].toLowerCase()} found. Create one with “+ New”.`} />}
         <ul className="entity-list">
           {entities.map((e) => (
-            <li key={e.id} className={e.id === selectedId ? "selected" : ""} onClick={() => select(e.id)}>
+            <EntityRow key={e.id} selected={e.id === selectedId} onSelect={() => select(e.id)}>
               <div className="entity-row-top">
                 <strong>{e.name}</strong>
                 <AgentBadge agent={e.agent} />
@@ -112,11 +114,12 @@ export function MarkdownEntityView({ kind }: { kind: MdKind }): React.JSX.Elemen
                 {e.readOnly && <span className="tag">built-in</span>}
                 {syncTags.get(e.id) === "synced" && <span className="tag">≡ synced</span>}
                 {syncTags.get(e.id) === "differs" && <span className="tag tag-warn">≠ differs</span>}
+                <UnsavedTag draftKey={e.id} />
               </div>
               <div className="entity-row-sub">
                 <span className="muted ellipsis">{"description" in e ? (e.description ?? "") : ""}</span>
               </div>
-            </li>
+            </EntityRow>
           ))}
         </ul>
       </div>
@@ -149,21 +152,23 @@ function MdEditor({
 }): React.JSX.Element {
   const requestPreview = useStore((s) => s.requestPreview);
   const stopEditing = useStore((s) => s.stopEditing);
-  const setDirty = useStore((s) => s.setDirty);
+  const key = draftKey(kind, entity?.id);
 
   const options = useMemo(() => dirOptions(kind, home, projects), [kind, home, projects]);
-  const [dirIndex, setDirIndex] = useState(0);
-  const dir = entity ? dirOf(kind, entity, entity.name) : (options[dirIndex] as DirOption).dir;
+  const [dirIndex, setDirIndex] = useDraft(key, "dirIndex", 0);
+  const dir = entity ? dirOf(kind, entity, entity.name) : (options[Math.min(dirIndex, options.length - 1)] as DirOption).dir;
   const prevName = entity ? fileBaseName(entity) : undefined;
 
-  const [name, setName] = useState(prevName ?? "");
-  const [description, setDescription] = useState(
+  const [name, setName] = useDraft(key, "name", prevName ?? "");
+  const [description, setDescription] = useDraft(
+    key,
+    "description",
     entity && "description" in entity ? (entity.description ?? "") : "",
   );
-  const [version, setVersion] = useState(entity && entity.kind === "skill" ? (entity.version ?? "") : "");
-  const [tools, setTools] = useState(entity && entity.kind === "subagent" ? (entity.tools ?? "") : "");
-  const [model, setModel] = useState(entity && entity.kind === "subagent" ? (entity.model ?? "") : "");
-  const [body, setBody] = useState(entity?.body ?? "");
+  const [version, setVersion] = useDraft(key, "version", entity && entity.kind === "skill" ? (entity.version ?? "") : "");
+  const [tools, setTools] = useDraft(key, "tools", entity && entity.kind === "subagent" ? (entity.tools ?? "") : "");
+  const [model, setModel] = useDraft(key, "model", entity && entity.kind === "subagent" ? (entity.model ?? "") : "");
+  const [body, setBody] = useDraft(key, "body", entity?.body ?? "");
   const [errors, setErrors] = useState<string[]>([]);
 
   const readOnly = entity?.readOnly ?? false;
@@ -199,15 +204,18 @@ function MdEditor({
           : { description: description.trim() === "" ? undefined : description.trim() };
       mutation = { op: "upsertMarkdown", kind, dir, name: trimmed, prevName, frontmatter, body };
     }
-    void requestPreview(mutation);
+    void requestPreview(mutation, { draftKey: key, subject: trimmed });
   };
 
   const remove = (): void => {
     if (!entity) return;
     if (entity.kind === "skill") {
-      void requestPreview({ op: "deleteSkill", filePath: entity.filePath, skillDir: dirOf("skill", entity, entity.name) + `/${prevName ?? entity.name}` });
+      void requestPreview(
+        { op: "deleteSkill", filePath: entity.filePath, skillDir: dirOf("skill", entity, entity.name) + `/${prevName ?? entity.name}` },
+        { draftKey: key, subject: entity.name },
+      );
     } else {
-      void requestPreview({ op: "deleteFile", filePath: entity.filePath });
+      void requestPreview({ op: "deleteFile", filePath: entity.filePath }, { draftKey: key, subject: entity.name });
     }
   };
 
@@ -224,16 +232,17 @@ function MdEditor({
       </div>
 
       {!entity && (
-        <div className="field">
-          <label>Location</label>
-          <select value={dirIndex} onChange={(e) => setDirIndex(Number(e.target.value))}>
-            {options.map((o, i) => (
-              <option key={o.dir} value={i}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        <Field label="Location">
+          {(id) => (
+            <select id={id} value={dirIndex} onChange={(e) => setDirIndex(Number(e.target.value))}>
+              {options.map((o, i) => (
+                <option key={o.dir} value={i}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          )}
+        </Field>
       )}
       {entity && (
         <p className="muted small">
@@ -241,41 +250,33 @@ function MdEditor({
         </p>
       )}
 
-      <div className="field">
-        <label>Name</label>
-        <input value={name} readOnly={readOnly} onChange={(e) => { setName(e.target.value); setDirty(true); }} />
-      </div>
-      <div className="field">
-        <label>Description</label>
-        <textarea
-          rows={2}
-          value={description}
-          readOnly={readOnly}
-          onChange={(e) => { setDescription(e.target.value); setDirty(true); }}
-        />
-      </div>
+      <Field label="Name">
+        {(id) => <input id={id} value={name} readOnly={readOnly} onChange={(e) => setName(e.target.value)} />}
+      </Field>
+      <Field label="Description">
+        {(id) => (
+          <textarea id={id} rows={2} value={description} readOnly={readOnly} onChange={(e) => setDescription(e.target.value)} />
+        )}
+      </Field>
       {kind === "skill" && (
-        <div className="field">
-          <label>Version (optional)</label>
-          <input value={version} readOnly={readOnly} onChange={(e) => { setVersion(e.target.value); setDirty(true); }} />
-        </div>
+        <Field label="Version (optional)">
+          {(id) => <input id={id} value={version} readOnly={readOnly} onChange={(e) => setVersion(e.target.value)} />}
+        </Field>
       )}
       {kind === "subagent" && (
         <>
-          <div className="field">
-            <label>Tools (comma-separated, optional)</label>
-            <input value={tools} readOnly={readOnly} onChange={(e) => { setTools(e.target.value); setDirty(true); }} />
-          </div>
-          <div className="field">
-            <label>Model (optional)</label>
-            <input value={model} readOnly={readOnly} onChange={(e) => { setModel(e.target.value); setDirty(true); }} />
-          </div>
+          <Field label="Tools (comma-separated, optional)">
+            {(id) => <input id={id} value={tools} readOnly={readOnly} onChange={(e) => setTools(e.target.value)} />}
+          </Field>
+          <Field label="Model (optional)">
+            {(id) => <input id={id} value={model} readOnly={readOnly} onChange={(e) => setModel(e.target.value)} />}
+          </Field>
         </>
       )}
 
       <div className="field grow">
         <label>Body (markdown)</label>
-        <CodeEditor value={body} lang="markdown" readOnly={readOnly} minHeight="260px" onChange={(v) => { setBody(v); setDirty(true); }} />
+        <CodeEditor value={body} lang="markdown" readOnly={readOnly} minHeight="260px" onChange={setBody} />
       </div>
 
       {entity && kind === "skill" && entity.kind === "skill" && (
@@ -290,7 +291,7 @@ function MdEditor({
       )}
 
       {errors.length > 0 && (
-        <div className="banner banner-warn">
+        <div className="banner banner-warn" role="alert">
           {errors.map((e) => (
             <div key={e}>{e}</div>
           ))}
@@ -305,6 +306,7 @@ function MdEditor({
             </button>
           )}
           <span className="spacer" />
+          <DraftStatus draftKey={key} />
           <button className="btn btn-primary" onClick={save}>
             Save…
           </button>

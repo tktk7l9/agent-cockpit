@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { clearDraft, withDraftField, type Drafts } from "../../lib/drafts";
 import type { AgentId, Entity, EntityKind } from "../../lib/model/types";
 import type { Mutation } from "../../lib/mutations";
 import type { BackupInfo, PreviewFile, ScanResultPayload } from "../../shared/ipc";
@@ -38,8 +39,36 @@ function saveUiState(section: Section, agentFilter: AgentId | "all"): void {
   }
 }
 
+/** What the confirm button of the diff preview does — its label is this verb (SHIG 47). */
+export type PreviewAction = "save" | "delete" | "restore";
+
+export interface PreviewOptions {
+  /** Draft cleared once the write succeeds (see lib/drafts). */
+  draftKey?: string;
+  /** Name shown in the preview title and the result toast. */
+  subject?: string;
+}
+
+export interface Toast {
+  kind: "ok" | "err";
+  text: string;
+  /** Optional one-click follow-up, e.g. Undo (SHIG 54/57). */
+  action?: { label: string; run: () => void };
+}
+
+function actionOf(mutation: Mutation | null): PreviewAction {
+  if (!mutation) return "restore";
+  return mutation.op === "deleteMcp" || mutation.op === "deleteSkill" || mutation.op === "deleteFile" ? "delete" : "save";
+}
+
+const DONE_TEXT: Record<PreviewAction, string> = { save: "Saved", delete: "Deleted", restore: "Restored" };
+const OK_TOAST_MS = 3500;
+const UNDO_TOAST_MS = 8000;
+
 export interface PreviewState {
   mutation: Mutation | null; // null = backup restore
+  action: PreviewAction;
+  options: PreviewOptions;
   restoreId?: string;
   files: PreviewFile[];
   conflictPath?: string;
@@ -53,10 +82,11 @@ interface CockpitState {
   agentFilter: AgentId | "all";
   selectedId: string | null;
   creating: boolean;
-  dirty: boolean;
+  /** Unsaved editor input per entity; survives navigation (SHIG 38). */
+  drafts: Drafts;
   stale: boolean;
   preview: PreviewState | null;
-  toast: { kind: "ok" | "err"; text: string } | null;
+  toast: Toast | null;
   backups: BackupInfo[];
   paletteOpen: boolean;
   errorsOpen: boolean;
@@ -68,7 +98,9 @@ interface CockpitState {
   select(id: string | null): void;
   startCreate(): void;
   stopEditing(): void;
-  setDirty(dirty: boolean): void;
+  setDraftField(key: string, field: string, value: unknown): void;
+  discardDraft(key: string): void;
+  reloadDiscardingDrafts(): Promise<void>;
   markStaleOrRefresh(): void;
   openPalette(): void;
   closePalette(): void;
@@ -76,12 +108,14 @@ interface CockpitState {
   closeErrors(): void;
   checkUpdate(): Promise<void>;
   dismissUpdate(): void;
-  requestPreview(mutation: Mutation): Promise<void>;
+  requestPreview(mutation: Mutation, options?: PreviewOptions): Promise<void>;
   requestRestorePreview(id: string): Promise<void>;
   repreview(): Promise<void>;
   confirmApply(): Promise<void>;
   cancelPreview(): void;
-  showToast(kind: "ok" | "err", text: string): void;
+  undoApply(token: number, done: string): Promise<void>;
+  showToast(kind: "ok" | "err", text: string, action?: Toast["action"]): void;
+  dismissToast(): void;
   loadBackups(): Promise<void>;
 }
 
@@ -94,7 +128,7 @@ export const useStore = create<CockpitState>((set, get) => ({
   agentFilter: isValidAgentFilter(persistedUiState.agentFilter) ? persistedUiState.agentFilter : "all",
   selectedId: null,
   creating: false,
-  dirty: false,
+  drafts: {},
   stale: false,
   preview: null,
   toast: null,
@@ -110,30 +144,53 @@ export const useStore = create<CockpitState>((set, get) => ({
   },
 
   setSection: (section) => {
-    set({ section, selectedId: null, creating: false, dirty: false });
+    set({ section, selectedId: null, creating: false });
     saveUiState(section, get().agentFilter);
   },
   setAgentFilter: (agentFilter) => {
     set({ agentFilter });
     saveUiState(get().section, agentFilter);
   },
-  select: (selectedId) => set({ selectedId, creating: false, dirty: false }),
-  startCreate: () => set({ creating: true, selectedId: null, dirty: false }),
-  stopEditing: () => set({ creating: false, selectedId: null, dirty: false }),
-  setDirty: (dirty) => set({ dirty }),
+  // Navigation keeps drafts: reopening the entity brings the unsaved input back.
+  select: (selectedId) => set({ selectedId, creating: false }),
+  startCreate: () => set({ creating: true, selectedId: null }),
+  stopEditing: () => set({ creating: false, selectedId: null }),
+  setDraftField: (key, field, value) => set({ drafts: withDraftField(get().drafts, key, field, value) }),
+
+  discardDraft: (key) => {
+    const draft = get().drafts[key];
+    if (!draft) return;
+    set({ drafts: clearDraft(get().drafts, key) });
+    get().showToast("ok", "Changes discarded", {
+      label: "Undo",
+      run: () => set({ drafts: { ...get().drafts, [key]: draft } }),
+    });
+  },
+
+  reloadDiscardingDrafts: async () => {
+    const drafts = get().drafts;
+    set({ drafts: {} });
+    await get().refresh();
+    if (Object.keys(drafts).length > 0) {
+      get().showToast("ok", "Reloaded from disk — drafts discarded", {
+        label: "Undo",
+        run: () => set({ drafts: { ...drafts, ...get().drafts } }),
+      });
+    }
+  },
 
   markStaleOrRefresh: () => {
-    if (get().dirty || get().preview) set({ stale: true });
+    if (Object.keys(get().drafts).length > 0 || get().preview) set({ stale: true });
     else void get().refresh();
   },
 
-  requestPreview: async (mutation) => {
+  requestPreview: async (mutation, options = {}) => {
     const result = await window.cockpit.preview(mutation);
     if (!result.ok) {
       get().showToast("err", result.error);
       return;
     }
-    set({ preview: { mutation, files: result.files, applying: false } });
+    set({ preview: { mutation, action: actionOf(mutation), options, files: result.files, applying: false } });
   },
 
   requestRestorePreview: async (id) => {
@@ -142,7 +199,9 @@ export const useStore = create<CockpitState>((set, get) => ({
       get().showToast("err", result.error);
       return;
     }
-    set({ preview: { mutation: null, restoreId: id, files: result.files, applying: false } });
+    set({
+      preview: { mutation: null, action: "restore", options: {}, restoreId: id, files: result.files, applying: false },
+    });
   },
 
   repreview: async () => {
@@ -155,7 +214,7 @@ export const useStore = create<CockpitState>((set, get) => ({
         set({ preview: null });
         return;
       }
-      set({ preview: { mutation: p.mutation, files: result.files, applying: false } });
+      set({ preview: { ...p, files: result.files, applying: false, conflictPath: undefined } });
       return;
     }
     if (p.restoreId) await get().requestRestorePreview(p.restoreId);
@@ -170,8 +229,19 @@ export const useStore = create<CockpitState>((set, get) => ({
       ? await window.cockpit.apply(preview.mutation, baseHashes)
       : await window.cockpit.applyRestore(preview.restoreId as string, preview.files[0]?.baseHash ?? null);
     if (result.status === "ok") {
-      set({ preview: null, dirty: false, creating: false });
-      get().showToast("ok", "Saved");
+      const draftKey = preview.options.draftKey;
+      const done = DONE_TEXT[preview.action];
+      set({
+        preview: null,
+        creating: false,
+        drafts: draftKey ? clearDraft(get().drafts, draftKey) : get().drafts,
+      });
+      const token = result.undoToken;
+      get().showToast(
+        "ok",
+        preview.options.subject ? `${done} ${preview.options.subject}` : done,
+        token === undefined ? undefined : { label: "Undo", run: () => void get().undoApply(token, done) },
+      );
       await get().refresh();
       if (!preview.mutation) await get().loadBackups();
     } else if (result.status === "conflict") {
@@ -184,10 +254,31 @@ export const useStore = create<CockpitState>((set, get) => ({
 
   cancelPreview: () => set({ preview: null }),
 
-  showToast: (kind, text) => {
-    set({ toast: { kind, text } });
-    setTimeout(() => set({ toast: null }), 3500);
+  undoApply: async (token, done) => {
+    set({ toast: null });
+    const result = await window.cockpit.undoLastApply(token);
+    if (result.status === "ok") {
+      get().showToast("ok", `Undone — ${done.toLowerCase()} change reverted`);
+      await get().refresh();
+      if (get().section === "backups") await get().loadBackups();
+    } else if (result.status === "conflict") {
+      get().showToast("err", `Can't undo: ${result.path} changed after the save. Restore it from Backups instead.`);
+    } else {
+      get().showToast("err", result.message);
+    }
   },
+
+  // Success toasts fade on their own; errors stay until dismissed so they can be read (SHIG 55/97).
+  showToast: (kind, text, action) => {
+    const toast: Toast = { kind, text, action };
+    set({ toast });
+    if (kind === "ok") {
+      setTimeout(() => {
+        if (get().toast === toast) set({ toast: null });
+      }, action ? UNDO_TOAST_MS : OK_TOAST_MS);
+    }
+  },
+  dismissToast: () => set({ toast: null }),
 
   loadBackups: async () => {
     set({ backups: await window.cockpit.listBackups() });

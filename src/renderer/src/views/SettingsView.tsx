@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { claudePermissions } from "../../../lib/agents/claude";
 import type { SettingsEntity } from "../../../lib/model/types";
 import { LazyCodeEditor as CodeEditor } from "../components/LazyCodeEditor";
 import { StringListEditor } from "../components/StringListEditor";
-import { AgentBadge, EmptyState, RevealButton, ScopeTag } from "../components/ui";
+import { AgentBadge, DraftStatus, EmptyState, EntityRow, RevealButton, ScopeTag, UnsavedTag } from "../components/ui";
 import { entitiesFor, useStore } from "../store";
+import { useDraft } from "../useDraft";
 
 const KNOWN_MODES = ["default", "acceptEdits", "plan", "bypassPermissions"];
 const UNSET = "__unset__";
@@ -36,16 +37,17 @@ export function SettingsView(): React.JSX.Element {
         {entities.length === 0 && <EmptyState text="No settings files found." />}
         <ul className="entity-list">
           {entities.map((e) => (
-            <li key={e.id} className={e.id === selectedId ? "selected" : ""} onClick={() => select(e.id)}>
+            <EntityRow key={e.id} selected={e.id === selectedId} onSelect={() => select(e.id)}>
               <div className="entity-row-top">
                 <strong>{e.name}</strong>
                 <AgentBadge agent={e.agent} />
                 <ScopeTag scope={e.scope} />
+                <UnsavedTag draftKey={e.id} />
               </div>
               <div className="entity-row-sub">
                 <span className="muted mono ellipsis">{e.filePath}</span>
               </div>
-            </li>
+            </EntityRow>
           ))}
         </ul>
       </div>
@@ -56,38 +58,35 @@ export function SettingsView(): React.JSX.Element {
 
 function PermissionsSection({ entity }: { entity: SettingsEntity }): React.JSX.Element {
   const requestPreview = useStore((s) => s.requestPreview);
-  const setDirty = useStore((s) => s.setDirty);
+  const key = entity.id;
 
   const initial = useMemo(() => claudePermissions(entity.rawText), [entity.rawText]);
   const initialOption =
     initial.defaultMode === undefined ? UNSET : KNOWN_MODES.includes(initial.defaultMode) ? initial.defaultMode : CUSTOM;
 
-  const [modeOption, setModeOption] = useState(initialOption);
-  const [customMode, setCustomMode] = useState(initialOption === CUSTOM ? (initial.defaultMode as string) : "");
-  const [allow, setAllow] = useState<string[]>(initial.allow);
-  const [deny, setDeny] = useState<string[]>(initial.deny);
+  const [modeOption, setModeOption] = useDraft(key, "perm.mode", initialOption);
+  const [customMode, setCustomMode] = useDraft(key, "perm.custom", initialOption === CUSTOM ? (initial.defaultMode as string) : "");
+  const [allow, setAllow] = useDraft<string[]>(key, "perm.allow", initial.allow);
+  const [deny, setDeny] = useDraft<string[]>(key, "perm.deny", initial.deny);
 
   const save = (): void => {
     const defaultMode = modeOption === UNSET ? null : modeOption === CUSTOM ? customMode.trim() : modeOption;
-    void requestPreview({
-      op: "setPermissions",
-      filePath: entity.filePath,
-      defaultMode,
-      allow: allow.filter((a) => a.trim() !== ""),
-      deny: deny.filter((d) => d.trim() !== ""),
-    });
+    void requestPreview(
+      {
+        op: "setPermissions",
+        filePath: entity.filePath,
+        defaultMode,
+        allow: allow.filter((a) => a.trim() !== ""),
+        deny: deny.filter((d) => d.trim() !== ""),
+      },
+      { draftKey: key, subject: `${entity.name} permissions` },
+    );
   };
 
   return (
     <div className="field">
-      <label>Permissions</label>
-      <select
-        value={modeOption}
-        onChange={(e) => {
-          setModeOption(e.target.value);
-          setDirty(true);
-        }}
-      >
+      <label htmlFor={`${key}-mode`}>Permissions</label>
+      <select id={`${key}-mode`} value={modeOption} onChange={(e) => setModeOption(e.target.value)}>
         <option value={UNSET}>(unset)</option>
         {KNOWN_MODES.map((m) => (
           <option key={m} value={m}>
@@ -101,28 +100,12 @@ function PermissionsSection({ entity }: { entity: SettingsEntity }): React.JSX.E
           value={customMode}
           className="mono"
           placeholder="custom defaultMode value"
-          onChange={(e) => {
-            setCustomMode(e.target.value);
-            setDirty(true);
-          }}
+          aria-label="Custom defaultMode value"
+          onChange={(e) => setCustomMode(e.target.value)}
         />
       )}
-      <StringListEditor
-        label="Allow rules"
-        items={allow}
-        onChange={(v) => {
-          setAllow(v);
-          setDirty(true);
-        }}
-      />
-      <StringListEditor
-        label="Deny rules"
-        items={deny}
-        onChange={(v) => {
-          setDeny(v);
-          setDirty(true);
-        }}
-      />
+      <StringListEditor label="Allow rules" items={allow} onChange={setAllow} />
+      <StringListEditor label="Deny rules" items={deny} onChange={setDeny} />
       <div className="editor-actions">
         <span className="spacer" />
         <button className="btn btn-primary" onClick={save}>
@@ -136,22 +119,27 @@ function PermissionsSection({ entity }: { entity: SettingsEntity }): React.JSX.E
 function SettingsEditor({ entity }: { entity: SettingsEntity }): React.JSX.Element {
   const requestPreview = useStore((s) => s.requestPreview);
   const stopEditing = useStore((s) => s.stopEditing);
-  const setDirty = useStore((s) => s.setDirty);
+  const key = entity.id;
 
-  const [raw, setRaw] = useState(entity.rawText);
-  const [knownDrafts, setKnownDrafts] = useState<Record<string, string>>(
+  const [raw, setRaw] = useDraft(key, "raw", entity.rawText);
+  const [knownDrafts, setKnownDrafts] = useDraft<Record<string, string>>(
+    key,
+    "known",
     Object.fromEntries(Object.entries(entity.known).map(([k, v]) => [k, typeof v === "string" ? v : JSON.stringify(v)])),
   );
 
-  const setKnown = (key: string): void => {
-    const draft = knownDrafts[key] ?? "";
-    void requestPreview({
-      op: "setSetting",
-      filePath: entity.filePath,
-      format: entity.format,
-      keyPath: entity.format === "json" ? key.split(".") : [key],
-      value: parseInputValue(draft),
-    });
+  const setKnown = (settingKey: string): void => {
+    const draft = knownDrafts[settingKey] ?? "";
+    void requestPreview(
+      {
+        op: "setSetting",
+        filePath: entity.filePath,
+        format: entity.format,
+        keyPath: entity.format === "json" ? settingKey.split(".") : [settingKey],
+        value: parseInputValue(draft),
+      },
+      { draftKey: key, subject: settingKey },
+    );
   };
 
   return (
@@ -174,15 +162,16 @@ function SettingsEditor({ entity }: { entity: SettingsEntity }): React.JSX.Eleme
       {Object.keys(entity.known).length > 0 && (
         <div className="field">
           <label>Quick edit</label>
-          {Object.keys(entity.known).map((key) => (
-            <div className="kv-row" key={key}>
-              <input value={key} readOnly className="mono" />
+          {Object.keys(entity.known).map((settingKey) => (
+            <div className="kv-row" key={settingKey}>
+              <input value={settingKey} readOnly className="mono" aria-label="Setting key" />
               <input
-                value={knownDrafts[key] ?? ""}
+                value={knownDrafts[settingKey] ?? ""}
                 className="mono"
-                onChange={(e) => { setKnownDrafts({ ...knownDrafts, [key]: e.target.value }); setDirty(true); }}
+                aria-label={`Value of ${settingKey}`}
+                onChange={(e) => setKnownDrafts({ ...knownDrafts, [settingKey]: e.target.value })}
               />
-              <button className="btn btn-small" onClick={() => setKnown(key)}>
+              <button className="btn btn-small" onClick={() => setKnown(settingKey)}>
                 Set…
               </button>
             </div>
@@ -196,15 +185,21 @@ function SettingsEditor({ entity }: { entity: SettingsEntity }): React.JSX.Eleme
           value={raw}
           lang={entity.format}
           minHeight="320px"
-          onChange={(v) => { setRaw(v); setDirty(true); }}
+          onChange={setRaw}
         />
       </div>
 
       <div className="editor-actions">
         <span className="spacer" />
+        <DraftStatus draftKey={key} />
         <button
           className="btn btn-primary"
-          onClick={() => void requestPreview({ op: "writeRaw", filePath: entity.filePath, format: entity.format, newText: raw })}
+          onClick={() =>
+            void requestPreview(
+              { op: "writeRaw", filePath: entity.filePath, format: entity.format, newText: raw },
+              { draftKey: key, subject: entity.name },
+            )
+          }
         >
           Save raw…
         </button>

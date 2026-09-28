@@ -14,8 +14,14 @@ export function StringListEditor({ label, items, onChange }: Props): React.JSX.E
       <label>{label}</label>
       {items.map((item, i) => (
         <div className="kv-row" key={i}>
-          <input className="mono" value={item} onChange={(e) => update(i, e.target.value)} placeholder="Bash(npm run build)" />
-          <button type="button" className="btn btn-icon" title="Remove" onClick={() => onChange(items.filter((_, j) => j !== i))}>
+          <input
+            className="mono"
+            aria-label={`${label} ${i + 1}`}
+            value={item}
+            onChange={(e) => update(i, e.target.value)}
+            placeholder="Bash(npm run build)"
+          />
+          <button type="button" className="btn btn-icon" title="Remove" aria-label={`Remove ${item || `rule ${i + 1}`}`} onClick={() => onChange(items.filter((_, j) => j !== i))}>
             ✕
           </button>
         </div>

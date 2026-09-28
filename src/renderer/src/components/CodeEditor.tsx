@@ -55,6 +55,9 @@ export function CodeEditor({ value, onChange, lang, readOnly = false, minHeight 
   onChangeRef.current = onChange;
   const readOnlyComp = useRef(new Compartment());
   const themeComp = useRef(new Compartment());
+  // True while the editor is being synced to a new `value` prop; that change is not user input,
+  // so it must not be reported back through onChange (it would recreate a just-discarded draft).
+  const syncingRef = useRef(false);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -70,7 +73,7 @@ export function CodeEditor({ value, onChange, lang, readOnly = false, minHeight 
           EditorView.lineWrapping,
           readOnlyComp.current.of(EditorState.readOnly.of(readOnly)),
           EditorView.updateListener.of((update) => {
-            if (update.docChanged) onChangeRef.current?.(update.state.doc.toString());
+            if (update.docChanged && !syncingRef.current) onChangeRef.current?.(update.state.doc.toString());
           }),
         ],
       }),
@@ -96,7 +99,12 @@ export function CodeEditor({ value, onChange, lang, readOnly = false, minHeight 
     if (!view) return;
     const current = view.state.doc.toString();
     if (current !== value) {
-      view.dispatch({ changes: { from: 0, to: current.length, insert: value } });
+      syncingRef.current = true;
+      try {
+        view.dispatch({ changes: { from: 0, to: current.length, insert: value } });
+      } finally {
+        syncingRef.current = false;
+      }
     }
   }, [value]);
 

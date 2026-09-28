@@ -58,6 +58,7 @@ export function ScanErrorsModal(): React.JSX.Element | null {
         onClick={(e) => e.stopPropagation()}
         onKeyDown={onKeyDown}
         role="dialog"
+        aria-modal="true"
         aria-label="Scan errors"
       >
         <header>
