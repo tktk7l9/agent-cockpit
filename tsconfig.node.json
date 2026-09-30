@@ -13,5 +13,6 @@
     "tests",
     "electron.vite.config.ts",
     "vitest.config.ts"
-  ]
+  ],
+  "exclude": ["tests/ui"]
 }

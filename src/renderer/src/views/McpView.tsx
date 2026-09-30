@@ -140,8 +140,11 @@ function McpEditor({
   const key = draftKey("mcp", entity?.id);
 
   const options = useMemo(() => targetOptions(home, projects), [home, projects]);
-  const [targetIndex, setTargetIndex] = useDraft(key, "targetIndex", 0);
-  const target = entity ? targetOf(entity) : (options[Math.min(targetIndex, options.length - 1)] as TargetOption).target;
+  const [draftTargetIndex, setTargetIndex] = useDraft(key, "targetIndex", 0);
+  // A draft may point past the list once a project is removed; clamp so the select
+  // shows the same target the save will write to.
+  const targetIndex = Math.min(draftTargetIndex, options.length - 1);
+  const target = entity ? targetOf(entity) : (options[targetIndex] as TargetOption).target;
 
   const [name, setName] = useDraft(key, "name", entity?.name ?? "");
   const [transport, setTransport] = useDraft<McpTransport>(key, "transport", entity?.transport ?? "stdio");
