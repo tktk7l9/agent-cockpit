@@ -57,7 +57,7 @@ xattr -dr com.apple.quarantine "/Applications/Agent Cockpit.app"
 npm ci
 npm run dev        # electron-vite dev server with HMR
 npm run typecheck
-npm run coverage   # vitest — src/lib is gated at 100% statements/branches/functions/lines
+npm run coverage   # vitest — src/lib is gated at 100% statements/branches/functions/lines, src/renderer at 98% lines
 npm run build
 ```
 

@@ -155,8 +155,11 @@ function MdEditor({
   const key = draftKey(kind, entity?.id);
 
   const options = useMemo(() => dirOptions(kind, home, projects), [kind, home, projects]);
-  const [dirIndex, setDirIndex] = useDraft(key, "dirIndex", 0);
-  const dir = entity ? dirOf(kind, entity, entity.name) : (options[Math.min(dirIndex, options.length - 1)] as DirOption).dir;
+  const [draftDirIndex, setDirIndex] = useDraft(key, "dirIndex", 0);
+  // A draft may point past the list once a project is removed; clamp so the select
+  // shows the same directory the save will write to.
+  const dirIndex = Math.min(draftDirIndex, options.length - 1);
+  const dir = entity ? dirOf(kind, entity, entity.name) : (options[dirIndex] as DirOption).dir;
   const prevName = entity ? fileBaseName(entity) : undefined;
 
   const [name, setName] = useDraft(key, "name", prevName ?? "");

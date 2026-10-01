@@ -29,7 +29,6 @@ import {
   readBackup,
   readTextIfExists,
   resolveAndCheck,
-  writeBackup,
 } from "./fs-gateway";
 import { probeHttp, probeStdio } from "./mcp-probe";
 import { runScan, resolveProjects } from "./scan";
@@ -205,9 +204,7 @@ function registerIpc(): void {
       const { sourcePath } = decodeBackupId(id);
       checkPath(sourcePath);
       const backupText = readBackup(userData(), id);
-      const current = readTextIfExists(sourcePath);
-      if (hashOrNull(current) !== baseHash) return { status: "conflict", path: sourcePath };
-      if (current !== null) writeBackup(userData(), sourcePath, current);
+      // applyFileEdits checks the base hash and snapshots the current file itself.
       return applyUndoable([{ path: sourcePath, newText: backupText }], { [sourcePath]: baseHash });
     } catch (err) {
       return { status: "error", message: err instanceof Error ? err.message : String(err) };
