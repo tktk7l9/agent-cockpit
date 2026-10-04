@@ -10,6 +10,8 @@ macOS Electron app that manages AI coding agent configuration (MCP servers / ski
 - Never re-serialize whole config files. JSON edits go through `src/lib/json/jsonc-edit.ts` (jsonc-parser text edits); TOML edits through `src/lib/toml/toml-edit.ts` (AST-range splices). This preserves unrelated keys, comments and formatting.
 - `~/.codex/auth.json`, `.env*`, `*credential*`, `*secret*`, `*token*` are hard-denied (`isPathDenied` in src/lib/paths.ts). Never weaken this.
 - Test fixtures must be synthetic — never copy real config values into the repo.
+- Every package goes in `devDependencies`. electron-vite leaves `dependencies` out of the bundle, and the packaged app ships without `node_modules`, so a runtime `dependencies` entry crashes the app at launch.
+- `src/main/mcp-probe.ts` is written with Effect (v4): the child process is held with `acquireRelease`, so answer, failure and timeout all go through the same SIGTERM → SIGKILL cleanup. Keep the exported functions Promise-based for the IPC handlers.
 - Renderer security: contextIsolation + sandbox on, single typed preload API (`window.cockpit`), no remote content, CSP injected at build (electron.vite.config.ts).
 
 ## Commands
