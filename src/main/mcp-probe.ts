@@ -5,8 +5,9 @@
 // to the user pressing Test.
 //
 // Written with Effect so that the three ways a probe ends (answer, failure,
-// timeout) share one cleanup path: the child process is acquired with
-// acquireRelease, and the timeout interrupts the probe, which releases it.
+// timeout) share one cleanup path: the child process (or the HTTP request's
+// AbortController) is acquired with acquireRelease, and the timeout interrupts
+// the probe, which releases it.
 // The exported functions stay Promise-based for the IPC handlers.
 
 import { spawn, type ChildProcess } from "node:child_process";
@@ -141,14 +142,21 @@ export function probeHttp(url: string, headers: Record<string, string>, timeoutM
   const httpFailure = (err: unknown) => new ProbeFailure({ phase: "http", detail: String(err) });
   return run(
     Effect.gen(function* () {
-      // The signal is aborted when the timeout interrupts the probe, which cancels the request.
+      // One controller for the request and its body, aborted however the probe ends. The
+      // per-call signal tryPromise offers is not enough: it is only aborted while fetch()
+      // itself is pending, so a timeout during the body read (an SSE stream that never
+      // sends the answer) would leave the connection open.
+      const controller = yield* Effect.acquireRelease(
+        Effect.sync(() => new AbortController()),
+        (c) => Effect.sync(() => c.abort()),
+      );
       const response = yield* Effect.tryPromise({
-        try: (signal) =>
+        try: () =>
           fetch(url, {
             method: "POST",
             headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream", ...headers },
             body: initializeRequestJson(),
-            signal,
+            signal: controller.signal,
           }),
         catch: httpFailure,
       });
@@ -167,6 +175,6 @@ export function probeHttp(url: string, headers: Record<string, string>, timeoutM
         serverName: parsed.serverName,
         serverVersion: parsed.serverVersion,
       } as const;
-    }).pipe(timeoutAfter(timeoutMs)),
+    }).pipe(Effect.scoped, timeoutAfter(timeoutMs)),
   );
 }

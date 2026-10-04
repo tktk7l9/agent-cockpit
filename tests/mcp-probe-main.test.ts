@@ -161,6 +161,23 @@ describe("probeHttp", () => {
     );
   });
 
+  it("cancels a response whose body never ends (an SSE stream without the answer)", async () => {
+    let closed: () => void = () => {};
+    const requestClosed = new Promise<void>((resolve) => (closed = resolve));
+    await withServer(
+      (req, res) => {
+        req.on("close", closed);
+        res.writeHead(200, { "Content-Type": "text/event-stream" });
+        res.write(": keep-alive\n\n"); // headers and a first chunk arrive, the answer never does
+      },
+      async (url) => {
+        const result = await probeHttp(url, {}, 300);
+        expect(result).toMatchObject({ ok: false, phase: "timeout" });
+        await requestClosed;
+      },
+    );
+  }, 5000);
+
   it("reports failure for a connection that cannot be established", async () => {
     const result = await probeHttp("http://127.0.0.1:1/does-not-exist", {}, 2000);
     expect(result.ok).toBe(false);
