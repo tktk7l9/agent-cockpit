@@ -7,7 +7,7 @@ export function PluginsView(): React.JSX.Element {
   const agentFilter = useStore((s) => s.agentFilter);
   const requestPreview = useStore((s) => s.requestPreview);
 
-  const entities = entitiesFor(data, "plugin", agentFilter) as PluginEntity[];
+  const entities = entitiesFor(data, "plugin", agentFilter);
 
   const toggle = (e: PluginEntity): void => {
     void requestPreview(

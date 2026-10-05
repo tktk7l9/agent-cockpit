@@ -5,7 +5,6 @@ import { useMemo, useState } from "react";
 import { draftKey } from "../../../lib/drafts";
 import type {
   CommandEntity,
-  Entity,
   ProjectInfo,
   SkillEntity,
   SubagentEntity,
@@ -76,11 +75,11 @@ export function MarkdownEntityView({ kind }: { kind: MdKind }): React.JSX.Elemen
   const select = useStore((s) => s.select);
   const startCreate = useStore((s) => s.startCreate);
 
-  const entities = entitiesFor(data, kind, agentFilter) as MdEntity[];
+  const entities = entitiesFor(data, kind, agentFilter);
   const selected = entities.find((e) => e.id === selectedId);
 
   const allSkills = useMemo(
-    () => (data ? (data.entities.filter((e) => e.kind === "skill") as SkillEntity[]) : []),
+    () => (data ? data.entities.filter((e): e is SkillEntity => e.kind === "skill") : []),
     [data],
   );
   const syncTags = useMemo(() => {

@@ -87,7 +87,7 @@ export function McpView(): React.JSX.Element {
   const select = useStore((s) => s.select);
   const startCreate = useStore((s) => s.startCreate);
 
-  const entities = entitiesFor(data, "mcp", agentFilter) as McpServerEntity[];
+  const entities = entitiesFor(data, "mcp", agentFilter);
   const selected = entities.find((e) => e.id === selectedId);
 
   return (

@@ -319,7 +319,13 @@ export const useStore = create<CockpitState>((set, get) => ({
   dismissUpdate: () => set({ updateInfo: null }),
 }));
 
-export function entitiesFor(data: ScanResultPayload | null, kind: EntityKind, agentFilter: AgentId | "all"): Entity[] {
+export function entitiesFor<K extends EntityKind>(
+  data: ScanResultPayload | null,
+  kind: K,
+  agentFilter: AgentId | "all",
+): Extract<Entity, { kind: K }>[] {
   if (!data) return [];
-  return data.entities.filter((e) => e.kind === kind && (agentFilter === "all" || e.agent === agentFilter));
+  return data.entities.filter(
+    (e): e is Extract<Entity, { kind: K }> => e.kind === kind && (agentFilter === "all" || e.agent === agentFilter),
+  );
 }

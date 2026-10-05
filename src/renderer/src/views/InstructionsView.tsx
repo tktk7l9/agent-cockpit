@@ -10,7 +10,7 @@ export function InstructionsView(): React.JSX.Element {
   const selectedId = useStore((s) => s.selectedId);
   const select = useStore((s) => s.select);
 
-  const entities = entitiesFor(data, "instructions", agentFilter) as InstructionsEntity[];
+  const entities = entitiesFor(data, "instructions", agentFilter);
   const selected = entities.find((e) => e.id === selectedId);
 
   return (

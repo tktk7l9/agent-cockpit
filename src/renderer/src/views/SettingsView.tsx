@@ -25,7 +25,7 @@ export function SettingsView(): React.JSX.Element {
   const selectedId = useStore((s) => s.selectedId);
   const select = useStore((s) => s.select);
 
-  const entities = entitiesFor(data, "settings", agentFilter) as SettingsEntity[];
+  const entities = entitiesFor(data, "settings", agentFilter);
   const selected = entities.find((e) => e.id === selectedId);
 
   return (
