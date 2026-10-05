@@ -7,6 +7,7 @@ import {
   codexConfigPath,
   codexDir,
   cursorDir,
+  editDirsWithinPath,
   isPathAllowed,
   isPathDenied,
   scanSpec,
@@ -98,6 +99,16 @@ describe("path access control", () => {
     expect(isPathAllowed(HOME, ["/proj"], "/proj/.mcp.json")).toBe(true);
     expect(isPathAllowed(HOME, ["/proj"], "/etc/passwd")).toBe(false);
     expect(isPathAllowed(HOME, [], "/proj/.mcp.json")).toBe(false);
+  });
+
+  it("requires created and removed directories to contain the edited file", () => {
+    const file = "/Users/test/.claude/skills/a/SKILL.md";
+    expect(editDirsWithinPath({ path: file, newText: "x" })).toBe(true);
+    expect(editDirsWithinPath({ path: file, newText: "x", createDirs: ["/Users/test/.claude/skills/a"] })).toBe(true);
+    expect(editDirsWithinPath({ path: file, newText: null, deleteDirIfEmpty: "/Users/test/.claude/skills/a" })).toBe(true);
+    expect(editDirsWithinPath({ path: file, newText: null, deleteDirIfEmpty: "/Users/test/Documents" })).toBe(false);
+    expect(editDirsWithinPath({ path: file, newText: "x", createDirs: ["/tmp/elsewhere"] })).toBe(false);
+    expect(editDirsWithinPath({ path: file, newText: "x", createDirs: ["/Users/test/.claude/skills/a/SKILL.md"] })).toBe(false);
   });
 
   it("rejects traversal and denied files even under allowed roots", () => {
