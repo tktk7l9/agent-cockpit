@@ -1,28 +1,28 @@
-# 02. `.mcp.json` サーバーの有効/無効トグル
+# 02. Enable/Disable Toggle for `.mcp.json` Servers
 
-## 背景 / 目的
+## Background / Goal
 
-プロジェクトの `.mcp.json` に定義された MCP サーバーは、Claude Code 側の承認状態が `~/.claude.json` の `projects[<path>].enabledMcpjsonServers` / `disabledMcpjsonServers`（string 配列）に記録される。現状アプリは disabled を **表示するだけ**（McpView の `disabled` pill）。これを GUI からトグルできるようにする。
+For an MCP server defined in a project's `.mcp.json`, Claude Code's approval state is recorded in `projects[<path>].enabledMcpjsonServers` / `disabledMcpjsonServers` (string arrays) of `~/.claude.json`. Currently the app only **displays** disabled (the `disabled` pill in McpView). Make it toggleable from the GUI.
 
-## 前提知識（コードの現状）
+## Background knowledge (current state of the code)
 
-- 読み側: `parseClaudeGlobal`（src/lib/agents/claude.ts）が両配列をパース済み。`buildInventory`（src/lib/inventory.ts の `case "mcpJson"`) が `enabled = !gates.disabledMcpjsonServers.includes(name)` を設定
-- `.mcp.json` 由来のエンティティは `source: { kind: "mcpjson" }`・`scope: { level: "project", projectPath }`・`enabled?: boolean`
-- `~/.claude.json` のパスは renderer では `${data.home}/.claude.json` で組める
-- 参考: `~/.claude.json` の projects エントリには `enableAllProjectMcpServers: boolean` が存在する場合がある（全許可フラグ）。**本タスクでは読み書きしない** が、UI 注記に使う（下記）
+- Read side: `parseClaudeGlobal` (src/lib/agents/claude.ts) already parses both arrays. `buildInventory` (`case "mcpJson"` in src/lib/inventory.ts) sets `enabled = !gates.disabledMcpjsonServers.includes(name)`
+- Entities from `.mcp.json` have `source: { kind: "mcpjson" }`, `scope: { level: "project", projectPath }`, `enabled?: boolean`
+- The renderer can build the `~/.claude.json` path as `${data.home}/.claude.json`
+- Reference: a projects entry in `~/.claude.json` may have `enableAllProjectMcpServers: boolean` (an allow-all flag). **This task neither reads nor writes it**, but uses it in a UI note (see below)
 
-## 仕様
+## Specification
 
-- McpView で `source.kind === "mcpjson"` のサーバーを選択したとき、エディタ上部に有効/無効スイッチ（`.switch` クラス流用）を表示
-- トグル ON（有効化）: `disabledMcpjsonServers` から name を除去し、`enabledMcpjsonServers` に name を追加（重複追加しない）
-- トグル OFF（無効化）: `enabledMcpjsonServers` から除去し、`disabledMcpjsonServers` に追加
-- 書込先はどちらも `~/.claude.json` の `projects[<projectPath>]` 配下。**他のキーには一切触れない**
-- 通常の差分プレビュー（DiffModal）→ apply の経路に乗せる
-- cursor の mcp.json（`source.kind === "cursor"`）にはこの概念がないので表示しない
+- When a server with `source.kind === "mcpjson"` is selected in McpView, show an enable/disable switch (reuse the `.switch` class) at the top of the editor
+- Toggle ON (enable): remove name from `disabledMcpjsonServers` and add name to `enabledMcpjsonServers` (do not add duplicates)
+- Toggle OFF (disable): remove from `enabledMcpjsonServers` and add to `disabledMcpjsonServers`
+- Both write targets are under `projects[<projectPath>]` in `~/.claude.json`. **Never touch any other key**
+- Route it through the normal diff preview (DiffModal) → apply path
+- Cursor's mcp.json (`source.kind === "cursor"`) has no such concept, so do not show the switch
 
-## 実装手順
+## Implementation steps
 
-### 1. lib: Mutation 追加
+### 1. lib: add a Mutation
 
 `src/lib/mutations.ts`:
 
@@ -30,64 +30,64 @@
 | { op: "toggleMcpJsonServer"; claudeJsonPath: string; projectPath: string; name: string; enabled: boolean }
 ```
 
-プランナ `planToggleMcpJsonServer(ctx, m)`:
-1. `text = ctx.snapshot(m.claudeJsonPath)`。null なら throw（`.mcp.json` を承認した時点で必ず存在するファイル）
-2. `parseClaudeGlobal(text)` で現在の両配列を取得（プロジェクトエントリ不在なら空配列扱い — `parseClaudeGlobal` が既にそう返す）
-3. 新配列を計算:
-   - enabled=true: `enabledNew = 現enabled ∪ {name}`（順序維持・末尾追加）, `disabledNew = 現disabled − {name}`
-   - enabled=false: その逆
-4. `setJsonValue` を2回適用（`["projects", projectPath, "enabledMcpjsonServers"]` と同 disabled）。**配列はこの機能が所有するキーなので丸ごと置換でよい**（外科的編集の対象はキー単位）
-5. 変化がない場合（既に希望状態）もそのまま newText を返してよい — DiffModal 側が「no textual change」表示で Apply を無効化する
-6. `mutationReadPaths` に `[m.claudeJsonPath]` を追加
+Planner `planToggleMcpJsonServer(ctx, m)`:
+1. `text = ctx.snapshot(m.claudeJsonPath)`. Throw if null (the file always exists once a `.mcp.json` has been approved)
+2. Get the current two arrays with `parseClaudeGlobal(text)` (treat a missing project entry as empty arrays; `parseClaudeGlobal` already returns that)
+3. Compute the new arrays:
+   - enabled=true: `enabledNew = current enabled ∪ {name}` (keep order, append at the end), `disabledNew = current disabled − {name}`
+   - enabled=false: the reverse
+4. Apply `setJsonValue` twice (`["projects", projectPath, "enabledMcpjsonServers"]` and the same for disabled). **The arrays are keys owned by this feature, so replacing them wholesale is fine** (the unit of surgical editing is the key)
+5. If nothing changes (already in the desired state), returning newText as is is fine. DiffModal shows "no textual change" and disables Apply
+6. Add `[m.claudeJsonPath]` to `mutationReadPaths`
 
-### 2. inventory: enabled 判定の精密化
+### 2. inventory: refine the enabled determination
 
-現状 `enabled = !disabled.includes(name)` だが、enabled 配列も見るよう変更:
+Currently `enabled = !disabled.includes(name)`; change it to also look at the enabled array:
 
 ```ts
 disabled.includes(name) → false
 enabled.includes(name)  → true
-どちらにも無い          → undefined（未承認 = Claude Code 起動時に確認される状態）
+in neither              → undefined (unapproved = the state Claude Code asks about at startup)
 ```
 
-`McpServerEntity.enabled` は `boolean | undefined` のまま。McpView のリスト行は `enabled === false` → `disabled` pill（既存）、`undefined` → `unapproved` の `.tag` を追加表示。
+`McpServerEntity.enabled` stays `boolean | undefined`. In McpView's list rows, `enabled === false` → the `disabled` pill (existing), `undefined` → add an `unapproved` `.tag`.
 
-### 3. renderer: McpView 拡張
+### 3. renderer: extend McpView
 
-`McpEditor` 内、`entity.source.kind === "mcpjson"` のとき:
+Inside `McpEditor`, when `entity.source.kind === "mcpjson"`:
 
 ```tsx
 <div className="field">
   <label>Claude Code approval</label>
   <switch> … onClick={() => requestPreview({ op: "toggleMcpJsonServer", claudeJsonPath: `${home}/.claude.json`, projectPath, name: entity.name, enabled: !(entity.enabled ?? false) })}
-  <p className="muted small">Stored in ~/.claude.json (projects.{path}). enableAllProjectMcpServers が設定されている場合はそちらが優先されることがある。</p>
+  <p className="muted small">Stored in ~/.claude.json (projects.{path}). If enableAllProjectMcpServers is set, it may take precedence.</p>
 </div>
 ```
 
-`projectPath` は `entity.scope.level === "project"` の narrowing 後に取得。`home` は props で受け取り済み。
+Get `projectPath` after narrowing with `entity.scope.level === "project"`. `home` is already received via props.
 
-## テスト
+## Tests
 
-`tests/mutations.test.ts` に追記（または新 describe）:
-- 有効化: disabled から消え enabled に入る。**decoy キー（projects の他フィールド・トップレベル他キー）がバイト単位で不変**
-- 無効化: 逆方向
-- 両配列に元々居ない name の有効化（enabled への純追加）
-- 既に希望状態のトグル（冪等）
-- projects にエントリ自体が無いプロジェクトパスでの有効化（jsonc modify が中間キーを自動生成することを確認）
-- ファイル不在で throw
-- `mutationReadPaths` のケース追加
+Add to `tests/mutations.test.ts` (or a new describe):
+- Enable: removed from disabled and added to enabled. **Decoy keys (other fields of projects, other top-level keys) are byte-identical**
+- Disable: the reverse direction
+- Enabling a name that was in neither array (pure append to enabled)
+- Toggling to the state it is already in (idempotent)
+- Enabling for a project path that has no entry in projects at all (confirms that jsonc modify auto-creates intermediate keys)
+- Throws when the file is absent
+- Add a `mutationReadPaths` case
 
-`tests/inventory.test.ts`: enabled 配列に載っている場合 true / どちらにも無い場合 undefined のケースを追加（既存フィクスチャの `enabledMcpjsonServers: ["a"]` を活用）。
+`tests/inventory.test.ts`: add cases where the name is in the enabled array → true / in neither → undefined (use the existing fixture's `enabledMcpjsonServers: ["a"]`).
 
-## 検証
+## Verification
 
-1. ゲート一式 green
-2. 実機: 任意のプロジェクトの `.mcp.json` サーバー（例: utility-tracker の supabase）を無効化 → DiffModal の差分が `disabledMcpjsonServers` 追加のみであること → Apply → `claude` CLI をそのプロジェクトで起動し `/mcp` で無効になっていること → 元に戻す
-3. Apply 前後の `~/.claude.json` を `git diff --no-index`（バックアップと比較）し、対象2キー以外の変化がゼロであること
+1. All gates green
+2. On a real machine: disable a `.mcp.json` server of any project (e.g. supabase in utility-tracker) → confirm the DiffModal diff is only an addition to `disabledMcpjsonServers` → Apply → start the `claude` CLI in that project and confirm via `/mcp` that it is disabled → revert
+3. Compare `~/.claude.json` before and after Apply with `git diff --no-index` (against the backup) and confirm there is zero change other than the two target keys
 
-## 完了条件
+## Completion criteria
 
-- [ ] 検証 3 点 pass（特に実機の戻し確認まで）
-- [ ] lib 100%×4 維持
-- [ ] cursor ソースのサーバーにスイッチが出ないこと
-- [ ] `enableAllProjectMcpServers` には触れていないこと（grep で確認）
+- [ ] All 3 verification points pass (in particular, including the revert on the real machine)
+- [ ] lib stays at 100%×4
+- [ ] The switch does not appear for servers whose source is cursor
+- [ ] `enableAllProjectMcpServers` is not touched (confirm with grep)
