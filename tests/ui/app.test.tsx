@@ -1,7 +1,7 @@
 // App shell: navigation, agent filter, file-change handling, toasts, update
 // banner and the Cmd+K shortcut — all driven through the DOM.
 
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { App } from "../../src/renderer/src/App";

@@ -1,29 +1,29 @@
-# 12. 手動アップデートチェック
+# 12. Manual update check
 
-## 背景 / 目的
+## Background / goal
 
-未署名アプリなので electron-updater による自動更新は使えない。GitHub Releases の最新タグと起動中バージョンを比較し、新しければリリースページへ誘導する **手動** チェックを付ける。
+The app is unsigned, so automatic updates via electron-updater are not available. Add a **manual** check that compares the latest tag on GitHub Releases with the running version and, if newer, directs the user to the release page.
 
-**プライバシー制約**: portal に「実行時のネットワーク通信ゼロ」と掲載している。よって **自動チェックは実装しない**。通信はユーザーがボタンを押したときのみ。この制約を破る実装（起動時チェック・定期チェック）は不合格。
+**Privacy constraint**: the portal advertises "zero network communication at runtime". Therefore **do not implement an automatic check**. Network access happens only when the user presses the button. An implementation that breaks this constraint (a check at startup or a periodic check) is a failure.
 
-## 仕様
+## Spec
 
-- サイドバー下部（agent-filter の上）に小さく `v0.1.0 — Check for updates` テキストボタン
-- クリック → main が `https://api.github.com/repos/tktk7l9/agent-cockpit/releases/latest` を fetch（10 秒タイムアウト）
-- 結果:
-  - 新しい: バナー/トースト `New version v0.2.0 available` + `Open Releases` ボタン（`shell.openExternal("https://github.com/tktk7l9/agent-cockpit/releases/latest")`）
-  - 最新: トースト `You're up to date (v0.1.0)`
-  - 失敗（オフライン・rate limit）: トースト `Update check failed: <短い理由>`
-- バージョン比較: semver の major.minor.patch 数値比較。プレリリースサフィックスは「リリース側にあれば無視して本体だけ比較」で十分
+- A small `v0.1.0 — Check for updates` text button at the bottom of the sidebar (above agent-filter)
+- On click, main fetches `https://api.github.com/repos/tktk7l9/agent-cockpit/releases/latest` (10-second timeout)
+- Results:
+  - Newer: banner/toast `New version v0.2.0 available` + an `Open Releases` button (`shell.openExternal("https://github.com/tktk7l9/agent-cockpit/releases/latest")`)
+  - Latest: toast `You're up to date (v0.1.0)`
+  - Failure (offline, rate limit): toast `Update check failed: <short reason>`
+- Version comparison: numeric semver major.minor.patch comparison. For prerelease suffixes, "if the release side has one, ignore it and compare only the core version" is sufficient
 
-## 実装手順
+## Implementation steps
 
-### 1. lib: バージョン比較（新規 `src/lib/version.ts`）
+### 1. lib: version comparison (new `src/lib/version.ts`)
 
 ```ts
-/** "v1.2.3" / "1.2.3" / "1.2.3-beta.1" を {major,minor,patch} に。パース不能は null */
+/** Parse "v1.2.3" / "1.2.3" / "1.2.3-beta.1" into {major,minor,patch}. Returns null if unparseable */
 export function parseVersion(tag: string): { major: number; minor: number; patch: number } | null;
-/** a > b なら 1, 等しければ 0, a < b なら -1。どちらか parse 不能なら null */
+/** Returns 1 if a > b, 0 if equal, -1 if a < b. Returns null if either cannot be parsed */
 export function compareVersions(a: string, b: string): -1 | 0 | 1 | null;
 ```
 
@@ -38,34 +38,34 @@ export type UpdateCheckResult =
   | { status: "error"; message: string };
 ```
 
-- main ハンドラ: `app.getVersion()`（= package.json version が electron-builder で埋まる。dev 実行時は electron 自身のバージョンになる場合があるので `app.isPackaged ? app.getVersion() : パッケージjsonから` … 簡潔には `process.env.npm_package_version` に頼らず、ビルド時定数 `import.meta.env` は main では使わない — **`app.getVersion()` をそのまま使い、dev では結果表示だけ確認** で割り切る）
-- fetch: Node 22 のグローバル fetch + `AbortSignal.timeout(10_000)`。ヘッダ `Accept: application/vnd.github+json`、`User-Agent: agent-cockpit`。レスポンスの `tag_name` を `compareVersions` へ
-- `shell.openExternal` は URL を `https://github.com/tktk7l9/agent-cockpit/` 前綴り固定（レスポンス中の任意 URL を開かない — API 改竄への防御）
+- main handler: `app.getVersion()` (electron-builder fills it from the package.json version; when running in dev it may return Electron's own version, so the options are `app.isPackaged ? app.getVersion() : read from package.json` ... to keep it simple, do not rely on `process.env.npm_package_version`, and do not use the build-time constant `import.meta.env` in main — **use `app.getVersion()` as is and, in dev, only verify the result display**; accept this trade-off)
+- fetch: Node 22 global fetch + `AbortSignal.timeout(10_000)`. Headers `Accept: application/vnd.github+json` and `User-Agent: agent-cockpit`. Pass the response's `tag_name` to `compareVersions`
+- `shell.openExternal` uses a URL fixed to the prefix `https://github.com/tktk7l9/agent-cockpit/` (never open an arbitrary URL from the response — defense against API tampering)
 
 ### 3. renderer
 
-サイドバー footer にボタン + 結果は既存 toast（`showToast`）。update-available のときのみ `.banner` をサイドバー下部に出し `Open Releases` を置く（store に `updateInfo` を持たせる）。
+A button in the sidebar footer; results use the existing toast (`showToast`). Only for update-available, show a `.banner` at the bottom of the sidebar with an `Open Releases` button (keep `updateInfo` in the store).
 
-### 4. リリース手順への追記
+### 4. Addition to the release procedure
 
-`docs/tasks/00-conventions.md` は変更しない。代わりに README.md の Development 節に1行追記: リリース時は package.json の version を上げてから `npm run package` → `gh release create v<ver> <dmg> <zip>`（タグとバージョンの一致が本機能の前提）。
+Do not change `docs/tasks/00-conventions.md`. Instead, add one line to the Development section of README.md: when releasing, bump the version in package.json, then `npm run package` -> `gh release create v<ver> <dmg> <zip>` (the tag matching the version is a prerequisite of this feature).
 
-## テスト
+## Tests
 
-- `tests/version.test.ts`（全分岐）: parseVersion 正常 / v プレフィクス / プレリリース / 不正文字列 null。compareVersions 大小・同値・不能 null
-- fetch 部はテスト対象外（main）。手動検証で担保
+- `tests/version.test.ts` (all branches): parseVersion valid / v prefix / prerelease / invalid string returns null. compareVersions greater, less, equal, and null when unparseable
+- The fetch part is not covered by tests (it is in main). It is covered by manual verification
 
-## 検証
+## Verification
 
-1. ゲート一式 green
-2. `npx electron .` → Check for updates → 現在 v0.1.0 = 最新なら up-to-date トースト
-3. 一時的に package.json の version を 0.0.1 にして build → update-available バナー + Open Releases でブラウザが開く → version を戻す
-4. ネットワーク遮断（Wi-Fi off）で error トースト。アプリがフリーズしない
-5. **通信タイミングの確認**: 起動しただけでは GitHub API に一切アクセスしないこと（Console.app や `nettop` での確認、またはハンドラ以外に fetch 呼び出しがないことの grep で可）
+1. The full gate suite is green
+2. `npx electron .` -> Check for updates -> if the current v0.1.0 is the latest, the up-to-date toast appears
+3. Temporarily set the package.json version to 0.0.1 and build -> the update-available banner appears, and Open Releases opens the browser -> restore the version
+4. With the network cut off (Wi-Fi off), the error toast appears. The app does not freeze
+5. **Check communication timing**: merely launching the app makes no access to the GitHub API at all (confirm with Console.app or `nettop`, or by grepping that there is no fetch call outside the handler)
 
-## 完了条件
+## Definition of done
 
-- [ ] 検証 5 点 pass（特に 5）
-- [ ] lib 100%×4 維持
-- [ ] openExternal の URL が固定プレフィクスであること
-- [ ] portal の「通信ゼロ」注記の更新提案（ユーザー操作起点のみ、の文言）を PR 説明に含める（portal 自体の変更はしない）
+- [ ] All 5 verification points pass (especially 5)
+- [ ] lib 100%x4 maintained
+- [ ] The openExternal URL has a fixed prefix
+- [ ] Include in the PR description a proposed update to the portal's "zero network communication" note (wording such as "user-initiated only") (do not change the portal itself)

@@ -1,38 +1,38 @@
-# 11. スキャンエラー詳細パネル
+# 11. Scan errors detail panel
 
-## 背景 / 目的
+## Background / goal
 
-パースに失敗した設定ファイル（`ScanResultPayload.errors: { path, message }[]`）は、現状サイドバー下部の「⚠ N file(s) could not be parsed」の **title ツールチップ** でしか見られない。クリックで詳細モーダルを開き、各エラーに対処アクションを付ける。
+Config files that failed to parse (`ScanResultPayload.errors: { path, message }[]`) can currently only be seen through the **title tooltip** of "⚠ N file(s) could not be parsed" at the bottom of the sidebar. Open a detail modal on click and give each error an action.
 
-## 仕様
+## Spec
 
-- サイドバーの `.scan-errors` をボタン化。クリックでモーダル表示
-- モーダル内容: エラーごとに 1 行 — `path`（`.mono`・省略表示 + title）/ `message` / アクション 2 つ:
-  - `Reveal in Finder`（既存 `RevealButton`）
-  - `Open raw`（そのファイルが settings 系で SettingsEntity として読めている場合のみ → 該当エンティティへジャンプ。パース失敗ファイルはエンティティ化されていないことが多いので、無ければ非表示）
-- エラー 0 件のときは `.scan-errors` 自体を非表示（現状挙動を維持）
-- 再スキャン（Rescan）ボタンをモーダル footer に置く（`refresh()` を呼ぶだけ）
+- Turn the sidebar `.scan-errors` into a button. Clicking it shows a modal
+- Modal content: one row per error — `path` (`.mono`, truncated + title) / `message` / two actions:
+  - `Reveal in Finder` (the existing `RevealButton`)
+  - `Open raw` (only if that file is a settings-type file readable as a SettingsEntity -> jump to the entity. Files that failed to parse are often not turned into entities, so hide it when none exists)
+- When there are 0 errors, hide `.scan-errors` itself (keep the current behavior)
+- Put a Rescan button in the modal footer (it just calls `refresh()`)
 
-## 実装手順
+## Implementation steps
 
-1. `src/renderer/src/store.ts`: `errorsOpen: boolean` + open/close アクションを追加
-2. 新規 `src/renderer/src/components/ScanErrorsModal.tsx`: `.modal-backdrop`/`.modal` 流用。`data.errors` を表示。「Open raw」は `data.entities.find(e => e.kind === "settings" && e.filePath === err.path)` が見つかった場合のみ `setSection("settings"); select(id); close()`
-3. `App.tsx`: `.scan-errors` を `<button>` に変更（スタイルは現行踏襲 + hover）。モーダルを DiffModal と並べてマウント
-4. アクセシビリティ: モーダルに `role="dialog"` `aria-label="Scan errors"`、Esc で閉じる（backdrop クリックは既存踏襲）
+1. `src/renderer/src/store.ts`: add `errorsOpen: boolean` + open/close actions
+2. New `src/renderer/src/components/ScanErrorsModal.tsx`: reuse `.modal-backdrop`/`.modal`. Display `data.errors`. "Open raw" runs `setSection("settings"); select(id); close()` only if `data.entities.find(e => e.kind === "settings" && e.filePath === err.path)` finds a match
+3. `App.tsx`: change `.scan-errors` to a `<button>` (keep the current style + hover). Mount the modal alongside DiffModal
+4. Accessibility: give the modal `role="dialog"` and `aria-label="Scan errors"`, close it with Esc (backdrop click follows the existing behavior)
 
-## テスト
+## Tests
 
-lib 変更なし。typecheck green のみ。エラー表示自体の動作確認は検証手順で。
+No lib changes. Only typecheck must stay green. The error display itself is checked in the verification steps.
 
-## 検証（実機）
+## Verification (real device)
 
-1. ゲート一式 green
-2. わざと壊す: `echo "{broken" > /tmp/なんとか` ではなく**安全な対象**で行う — 例: `~/.cursor/mcp.json`（現在 0 byte）に `{broken` を書く → アプリの watcher が拾い、サイドバーに ⚠ 1 → クリック → モーダルに path と jsonc のエラーメッセージ → Reveal が Finder を開く
-3. `~/.cursor/mcp.json` を空に戻す（`: > ~/.cursor/mcp.json`）→ Rescan → ⚠ が消える
-4. エラー 0 件時に UI 上どこにも痕跡がないこと
+1. The full gate suite is green
+2. Break a file deliberately, but on a **safe target** rather than something like `echo "{broken" > /tmp/<arbitrary-file>` — for example write `{broken` to `~/.cursor/mcp.json` (currently 0 bytes) -> the app's watcher picks it up and the sidebar shows ⚠ 1 -> click -> the modal shows the path and the jsonc error message -> Reveal opens Finder
+3. Reset `~/.cursor/mcp.json` to empty (`: > ~/.cursor/mcp.json`) -> Rescan -> the ⚠ disappears
+4. With 0 errors, no trace remains anywhere in the UI
 
-## 完了条件
+## Definition of done
 
-- [ ] 検証 pass（壊したファイルの復旧まで）
+- [ ] Verification passes (including restoring the broken file)
 - [ ] typecheck / coverage / build green
-- [ ] エラーメッセージにファイル内容そのものが混ざらないこと（message はパーサ由来の短文のみ — env 値等の漏洩防止）
+- [ ] Error messages must not contain file contents themselves (message is only a short parser-derived sentence — prevents leaking env values, etc.)

@@ -1,21 +1,21 @@
-# 09. ライトテーマ対応
+# 09. Light theme support
 
-## 背景 / 目的
+## Background / goal
 
-現在ダークテーマ固定。macOS の外観設定（`prefers-color-scheme`）に自動追従するライトテーマを追加する。手動トグルは実装しない（OS 追従のみ — 設定 UI を持たないアプリの複雑化を避ける）。
+The app is currently fixed to a dark theme. Add a light theme that automatically follows the macOS appearance setting (`prefers-color-scheme`). Do not implement a manual toggle (OS-follow only — avoids adding complexity to an app that has no settings UI).
 
-## 仕様
+## Spec
 
-- `prefers-color-scheme: light` のとき全 UI がライト配色になる。切替は OS 設定変更に即時追従（メディアクエリなので自動）
-- エージェントカラー（--claude/--codex/--cursor）は両テーマ共通。ただしライトでの視認性を確認し、必要なら明度を微調整した `--claude-fg` 系を導入してよい
-- CodeMirror エディタと差分表示もライト配色に追従する
-- ウィンドウ背景（main プロセスの `backgroundColor: "#101418"`）とタイトルバーも追従する
+- When `prefers-color-scheme: light` applies, the whole UI uses light colors. Switching follows OS setting changes immediately (automatic, since it is a media query)
+- Agent colors (--claude/--codex/--cursor) are shared by both themes. However, check their visibility on light, and if needed you may introduce `--claude-fg`-style variants with slightly adjusted lightness
+- The CodeMirror editor and the diff view also follow the light colors
+- The window background (the main process `backgroundColor: "#101418"`) and the title bar also follow
 
-## 実装手順
+## Implementation steps
 
-### 1. CSS（大部分はこれで終わる）
+### 1. CSS (this covers most of the work)
 
-`src/renderer/src/styles.css` の `:root` 直後に追加:
+Add right after `:root` in `src/renderer/src/styles.css`:
 
 ```css
 @media (prefers-color-scheme: light) {
@@ -28,26 +28,26 @@
     --text-muted: #64748b;
     --accent: #0969da;
     --accent-soft: rgba(9, 105, 218, 0.12);
-    /* ok/warn/danger はライトで沈む場合のみ調整 */
+    /* adjust ok/warn/danger only if they look washed out on light */
   }
 }
 ```
 
-- rgba 直書き箇所を洗い出す: `grep -n "rgba(" src/renderer/src/styles.css`。黒背景前提の白 rgba（`.switch` トラック、`.diff-add/del` の背景等）は CSS 変数化してライト側で差し替える
-- `.modal-backdrop` の黒 55% はライトでも成立するので据え置き可
+- Find hard-coded rgba usages: `grep -n "rgba(" src/renderer/src/styles.css`. White rgba values that assume a black background (the `.switch` track, the `.diff-add/del` backgrounds, etc.) must become CSS variables and be overridden on the light side
+- The 55% black `.modal-backdrop` works on light too, so it can stay
 
-### 2. CodeMirror テーマ
+### 2. CodeMirror theme
 
-`CodeEditor.tsx` の `theme` は `{ dark: true }` 固定。対応:
+The `theme` in `CodeEditor.tsx` is fixed to `{ dark: true }`. Handle it as follows:
 
 ```ts
 const isDark = () => window.matchMedia("(prefers-color-scheme: dark)").matches;
 ```
 
-- ライト用 `EditorView.theme({...}, { dark: false })` を用意し、Compartment で保持。`matchMedia(...).addEventListener("change", ...)` で `dispatch({ effects: themeComp.reconfigure(...) })`（readOnly と同じ Compartment パターンが既にあるので踏襲）
-- 配色: caret/selection の `#7dd3fc` 系をライトでは `#0969da` 系に
+- Prepare a light `EditorView.theme({...}, { dark: false })` and hold it in a Compartment. Use `matchMedia(...).addEventListener("change", ...)` to `dispatch({ effects: themeComp.reconfigure(...) })` (the same Compartment pattern already exists for readOnly, so follow it)
+- Colors: change the `#7dd3fc`-family caret/selection colors to the `#0969da` family on light
 
-### 3. main プロセス
+### 3. Main process
 
 `src/main/index.ts`:
 
@@ -56,22 +56,22 @@ import { nativeTheme } from "electron";
 backgroundColor: nativeTheme.shouldUseDarkColors ? "#101418" : "#f5f7fa",
 ```
 
-- 起動後の切替: `nativeTheme.on("updated", ...)` で `mainWindow.setBackgroundColor(...)`（ちらつき防止のみが目的なので renderer 側 CSS が既に追従していれば必須ではないが、リサイズ時の下地色が合う）
+- Switching after startup: use `nativeTheme.on("updated", ...)` to call `mainWindow.setBackgroundColor(...)` (the only purpose is to prevent flicker, so it is not required if the renderer CSS already follows, but it makes the underlying color match during resize)
 
-## テスト
+## Tests
 
-lib 変更なし。typecheck green のみ。
+No lib changes. Only typecheck must stay green.
 
-## 検証（実機・目視）
+## Verification (real device, visual)
 
-1. システム設定 → 外観をライトに → アプリ全ビュー（9 セクション + DiffModal + パレット類）を目視。文字が読めない・境界が消える箇所ゼロ
-2. ダークに戻して回帰なし
-3. アプリ起動中に外観を切り替えて即時追従（再起動不要）
-4. CodeMirror（Skills の body・Settings の raw・差分表示）がライトで読めること
-5. スクリーンショットを両テーマで撮って PR に添付
+1. System Settings -> Appearance -> Light -> visually inspect every app view (9 sections + DiffModal + palettes). Zero places where text is unreadable or borders vanish
+2. Switch back to dark and confirm no regression
+3. Switch the appearance while the app is running and confirm it follows immediately (no restart)
+4. CodeMirror (the Skills body, the Settings raw view, the diff view) must be readable on light
+5. Take screenshots in both themes and attach them to the PR
 
-## 完了条件
+## Definition of done
 
-- [ ] 検証 5 点 pass
-- [ ] ハードコード色の残りが `grep -n "#[0-9a-fA-F]\{3,6\}" src/renderer/src/styles.css` で意図済みのもの（CSS 変数定義・両テーマ共通色）のみ
-- [ ] AgentBadge / チップ / pill / switch / toast がライトでコントラスト十分（WCAG AA 目安）
+- [ ] All 5 verification points pass
+- [ ] The remaining hard-coded colors from `grep -n "#[0-9a-fA-F]\{3,6\}" src/renderer/src/styles.css` are only intentional ones (CSS variable definitions, colors shared by both themes)
+- [ ] AgentBadge / chips / pills / switch / toast have sufficient contrast on light (WCAG AA as a guideline)

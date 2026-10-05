@@ -1,76 +1,76 @@
-# 03. permissions 専用エディタ
+# 03. Dedicated permissions Editor
 
-## 背景 / 目的
+## Background / Goal
 
-Claude Code の権限設定（`permissions.allow` / `permissions.deny` の文字列配列、`permissions.defaultMode`）は現状 SettingsView の raw JSON 編集でしか触れない。行単位の追加/削除 UI と defaultMode のドロップダウンを付け、raw を開かず安全に編集できるようにする。
+Claude Code's permission settings (the string arrays `permissions.allow` / `permissions.deny`, and `permissions.defaultMode`) can currently only be touched through raw JSON editing in SettingsView. Add per-row add/delete UI and a dropdown for defaultMode so they can be edited safely without opening the raw editor.
 
-## 対象ファイル（読み書き両方）
+## Target files (both read and write)
 
-- `~/.claude/settings.json`（user）
-- `<project>/.claude/settings.json` / `settings.local.json`（project — 実在例: このリポジトリ群では `{ permissions: { allow: [...] } }` のみのファイルが多い）
+- `~/.claude/settings.json` (user)
+- `<project>/.claude/settings.json` / `settings.local.json` (project; real example: many files across these repositories contain only `{ permissions: { allow: [...] } }`)
 
-いずれも既にスキャン済み（`SnapshotTag: claudeSettings` → `SettingsEntity`）。
+All of them are already scanned (`SnapshotTag: claudeSettings` → `SettingsEntity`).
 
-## 仕様
+## Specification
 
-- SettingsView のエディタペインで、`agent === "claude"` の settings エンティティに **Permissions セクション** を追加（raw エディタの上）
-  - `defaultMode`: ドロップダウン。選択肢 = `default` / `acceptEdits` / `plan` / `bypassPermissions` + 「(unset)」+ 自由入力への逃げ道（select に "custom…" を置き、選ぶと text input 表示）。値の網羅は保証しない前提で、**現在値が選択肢に無い場合はそのまま表示** する
-  - `allow` / `deny`: それぞれ文字列リストエディタ。1行 = 1ルール（例: `Bash(npm run build)`、`Read(~/.zshrc)`）。行の追加・編集・削除・並びは元の順序維持
-- 保存は Permissions セクション専用の Save ボタン（raw の Save とは独立）。1クリックで defaultMode/allow/deny の変更をまとめて1つの差分プレビューにする
-- ルール文字列のバリデーションはしない（Claude Code 側の仕様が広いため）。空行だけ除去する
+- In the editor pane of SettingsView, add a **Permissions section** for settings entities with `agent === "claude"` (above the raw editor)
+  - `defaultMode`: a dropdown. Options = `default` / `acceptEdits` / `plan` / `bypassPermissions` + "(unset)" + an escape hatch for free input (put "custom…" in the select, and choosing it shows a text input). Assuming the value set is not guaranteed to be exhaustive, **if the current value is not among the options, display it as is**
+  - `allow` / `deny`: a string-list editor for each. 1 row = 1 rule (e.g. `Bash(npm run build)`, `Read(~/.zshrc)`). Rows can be added, edited, and deleted; the original order is preserved
+- Saving uses a Save button dedicated to the Permissions section (independent of the raw Save). One click bundles the changes to defaultMode/allow/deny into a single diff preview
+- Do not validate rule strings (Claude Code's spec is broad). Only remove empty lines
 
-## 実装手順
+## Implementation steps
 
-### 1. lib: known 抽出の拡張
+### 1. lib: extend the known extraction
 
-`src/lib/agents/claude.ts` の `claudeSettingsKnown` は quick-edit 用の flat map なので **触らない**。代わりに専用リーダーを追加:
+`claudeSettingsKnown` in `src/lib/agents/claude.ts` is a flat map for quick-edit, so **do not touch it**. Add a dedicated reader instead:
 
 ```ts
 export interface ClaudePermissions {
   defaultMode?: string;
   allow: string[];
   deny: string[];
-  present: boolean; // permissions キー自体の有無
+  present: boolean; // whether the permissions key itself exists
 }
 export function claudePermissions(text: string | null): ClaudePermissions;
 ```
 
-配列でない/文字列でない値は無視して安全側に倒す（既存リーダーの `stringList` 相当の防御。分岐を書いた分テストする）。
+Ignore non-array / non-string values and fail safe (the same kind of defense as `stringList` in the existing readers. Test every branch you write).
 
-### 2. lib: Mutation 追加
+### 2. lib: add a Mutation
 
 ```ts
 | { op: "setPermissions"; filePath: string; defaultMode?: string | null; allow?: string[]; deny?: string[] }
 ```
 
-- `undefined` のフィールドは「変更しない」。`defaultMode: null` は「キー削除」（removeJsonKey）
-- プランナ: `setJsonValue(text, ["permissions", "allow"], allow)` 等をフィールドごとに適用。ファイル不在（settings.local.json が無い project 等）は `{}` から生成される（`setJsonValue` が null テキストを処理済み）
-- `mutationReadPaths` 追加を忘れない
+- A field that is `undefined` means "do not change". `defaultMode: null` means "delete the key" (removeJsonKey)
+- Planner: apply `setJsonValue(text, ["permissions", "allow"], allow)` etc. per field. If the file is absent (a project without settings.local.json, etc.), it is created from `{}` (`setJsonValue` already handles null text)
+- Do not forget to add it to `mutationReadPaths`
 
 ### 3. renderer
 
-- 新規 `src/renderer/src/components/StringListEditor.tsx`: `{ label, items, onChange }`。KvEditor.tsx を参考に、1カラム input + ✕ボタン + `+ add`。並び替えは不要（実装しない）
-- `SettingsView.tsx` の `SettingsEditor` に Permissions セクションを追加。初期値は `claudePermissions(entity.rawText)`（lib を renderer から直接 import — lib は純粋なので可）。ドラフトは useState、Save… で `requestPreview({ op: "setPermissions", ... })`
-- **注意**: raw エディタと Permissions セクションは同じファイルの別ドラフト。Permissions を Apply すると raw の内容は古くなる — Apply 成功後は store が refresh するのでコンポーネントが再マウントされ raw も更新される（`key={selected.id}` 済み）。特別対応不要だが、挙動として理解しておく
+- New `src/renderer/src/components/StringListEditor.tsx`: `{ label, items, onChange }`. Using KvEditor.tsx as a reference, one-column input + ✕ button + `+ add`. Reordering is not needed (do not implement it)
+- Add the Permissions section to `SettingsEditor` in `SettingsView.tsx`. The initial value is `claudePermissions(entity.rawText)` (importing lib directly from the renderer is fine because lib is pure). The draft is useState, and Save… calls `requestPreview({ op: "setPermissions", ... })`
+- **Note**: the raw editor and the Permissions section are separate drafts of the same file. Applying Permissions makes the raw content stale. After a successful Apply the store refreshes and the component remounts, so raw is updated too (`key={selected.id}` is already in place). No special handling is needed, but understand this behavior
 
-### 4. settings.local.json が存在しない場合の導線（任意・推奨）
+### 4. Path for when settings.local.json does not exist (optional, recommended)
 
-project スコープで settings.local.json エンティティが無い場合、SettingsView のリストに出てこない。今回は **スコープ外**（既存ファイルの編集のみ）。ただし手順書 07 の agent 追加時に「ファイル新規作成導線」として一般化する余地がある旨をコード コメントに残さない（コメント規約: 動機コメントは書かない）。
+For project scope, when there is no settings.local.json entity, it does not appear in SettingsView's list. This is **out of scope** this time (editing existing files only). However, do not leave a code comment saying that task 07 (adding agents) could generalize this into a "create new file" path (comment convention: do not write motivation comments).
 
-## テスト
+## Tests
 
-- `tests/agents.test.ts`: `claudePermissions` — フル指定 / permissions 無し / allow が非配列 / 要素が非文字列 / defaultMode 非文字列
-- `tests/mutations.test.ts`: setPermissions — allow のみ変更で deny/defaultMode/他キーがバイト不変 / defaultMode: null でキー削除 / ファイル不在から生成 / 空配列書込み / mutationReadPaths
+- `tests/agents.test.ts`: `claudePermissions` — fully specified / no permissions / allow is not an array / elements are not strings / defaultMode is not a string
+- `tests/mutations.test.ts`: setPermissions — changing only allow leaves deny/defaultMode/other keys byte-identical / `defaultMode: null` deletes the key / creation from an absent file / writing an empty array / mutationReadPaths
 
-## 検証
+## Verification
 
-1. ゲート一式 green
-2. 実機: `<repo>/.claude/settings.local.json`（例: parkour-cat）の allow に1行足す → 差分プレビューが配列1要素の追加のみ → Apply → 実ファイル確認 → 削除して戻す
-3. `~/.claude/settings.json` の defaultMode をドロップダウンで変更 → プレビュー → **Apply せず Cancel**（実運用値を壊さない）
+1. All gates green
+2. On a real machine: add one line to allow in `<repo>/.claude/settings.local.json` (e.g. parkour-cat) → the diff preview is only the addition of one array element → Apply → check the actual file → delete it to revert
+3. Change defaultMode in `~/.claude/settings.json` with the dropdown → preview → **Cancel without Applying** (do not break the real operational values)
 
-## 完了条件
+## Completion criteria
 
-- [ ] 検証 pass（2 は往復まで）
-- [ ] lib 100%×4 維持
-- [ ] codex の config.toml（settings, format: "toml"）に Permissions セクションが表示されないこと
-- [ ] permissions 以外のキー（enabledPlugins 等）に差分が出ないこと
+- [ ] Verification passes (for 2, including the round trip)
+- [ ] lib stays at 100%×4
+- [ ] The Permissions section is not shown for codex's config.toml (settings, format: "toml")
+- [ ] No diff appears in keys other than permissions (enabledPlugins, etc.)

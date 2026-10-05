@@ -1,76 +1,76 @@
-# 04. conflict 時の下書き保持・再適用
+# 04. Keep and re-apply the draft on conflict
 
-## 背景 / 目的
+## Background / Goal
 
-編集中に外部（Claude Code 本体・エディタ・git）が設定ファイルを書き換えると、watcher 経由で stale バナーが出るが、現状の選択肢は「Reload (discard draft)」のみ。編集内容を捨てずに済む導線を足す。
+When something external (Claude Code itself, an editor, git) rewrites a config file while the user is editing, the watcher shows a stale banner, but the only option today is "Reload (discard draft)". Add a path that does not throw the edits away.
 
-## 現状の挙動（コード読解の起点）
+## Current behavior (starting points for reading the code)
 
 - `src/main/watcher` → `CHANNELS.changed` → `store.markStaleOrRefresh()`:
-  - `dirty || preview` なら `stale: true`（App.tsx が `.banner-top` を表示）
-  - そうでなければ即 `refresh()`
-- 重要な事実: **保存フロー自体は既に conflict-safe**。`preview` は main が fresh disk を読んで planMutation するので、外部変更後に Save… を押しても「現在のディスク内容 + 自分のドラフト」の正しい差分が出る。apply も preview 時の baseHash を照合する。つまり「下書きを保持したまま保存を試みる」は **既存の Save… ボタンを押すだけで成立している**
-- 問題は UX: バナーが「破棄して再読込」しか提示せず、ユーザーが Save… を押してよいと分からない。また refresh するとエンティティ再マウント（`key={id}`）でドラフトが消える
+  - If `dirty || preview`, set `stale: true` (App.tsx shows `.banner-top`)
+  - Otherwise, call `refresh()` immediately
+- Key fact: **the save flow itself is already conflict-safe**. `preview` makes main read the fresh disk and run planMutation, so pressing Save… after an external change yields a correct diff of "current disk content + my draft". apply also checks the baseHash from preview time. In other words, "try to save while keeping the draft" **already works by just pressing the existing Save… button**
+- The problem is UX: the banner offers only "discard and reload", so the user cannot tell that pressing Save… is fine. Also, refresh remounts the entity (`key={id}`) and the draft is lost
 
-## 仕様
+## Spec
 
-1. stale バナーの文言とボタンを変更:
-   - 文言: `Config files changed on disk. Your draft is still intact — you can keep editing and Save… (the diff preview always compares against the current file).`
-   - ボタン1: `Reload (discard draft)` — 既存の refresh
-   - ボタン2: なし（Save… は各エディタに既にある。バナーに保存ボタンを重複させない）
-2. DiffModal 内 conflict バナー（apply 時に baseHash 不一致になったケース）に **`Re-preview` ボタン** を追加: 現在の mutation で `requestPreview` を再実行し、モーダルの差分と baseHash を最新化する（現状は閉じて手動で Save… し直すしかない）
-3. refresh 後のドラフト消失は仕様として許容（Reload は明示的な破棄操作なので）。自動マージは実装しない
+1. Change the stale banner text and buttons:
+   - Text: `Config files changed on disk. Your draft is still intact — you can keep editing and Save… (the diff preview always compares against the current file).`
+   - Button 1: `Reload (discard draft)` — the existing refresh
+   - Button 2: none (each editor already has Save…; do not duplicate a save button in the banner)
+2. Add a **`Re-preview` button** to the conflict banner inside DiffModal (the case where baseHash mismatched on apply): re-run `requestPreview` with the current mutation to refresh the modal's diff and baseHash (today the user can only close it and press Save… again manually)
+3. Losing the draft after a refresh is accepted as specified (Reload is an explicit discard action). Do not implement automatic merge
 
-## 実装手順
+## Implementation steps
 
 ### 1. store
 
 `src/renderer/src/store.ts`:
 
-- `PreviewState` は `mutation` を保持済み。`repreview()` アクションを追加:
+- `PreviewState` already holds `mutation`. Add a `repreview()` action:
 
 ```ts
 repreview: async () => {
   const p = get().preview;
-  if (!p?.mutation) return;               // restore preview は対象外
+  if (!p?.mutation) return;               // restore previews are out of scope
   const result = await window.cockpit.preview(p.mutation);
   if (!result.ok) { get().showToast("err", result.error); set({ preview: null }); return; }
-  set({ preview: { mutation: p.mutation, files: result.files, applying: false } }); // conflictPath をクリア
+  set({ preview: { mutation: p.mutation, files: result.files, applying: false } }); // clears conflictPath
 },
 ```
 
-- restore（`mutation: null`）の場合の Re-preview: `requestRestorePreview(p.restoreId)` を呼ぶ分岐にしてもよい（実装するなら restoreId の undefined ガード必須）
+- For Re-preview on a restore (`mutation: null`): you may branch to call `requestRestorePreview(p.restoreId)` (if you implement this, a guard for undefined restoreId is mandatory)
 
 ### 2. DiffModal
 
-`src/renderer/src/components/DiffModal.tsx` の conflict バナーに:
+In the conflict banner of `src/renderer/src/components/DiffModal.tsx`:
 
 ```tsx
 <button className="btn btn-small" onClick={() => void repreview()}>Re-preview</button>
 ```
 
-文言も「close して再編集」から「Re-preview で最新の差分に更新できる」旨に変更。
+Also change the wording from "close and re-edit" to say that Re-preview can refresh to the latest diff.
 
-### 3. App.tsx バナー文言
+### 3. App.tsx banner text
 
-仕様 1 の通り差し替え。`stale` フラグは preview 成功（apply ok → refresh）でも解除される既存挙動のままで良い。
+Replace it as in Spec 1. Keep the existing behavior where the `stale` flag is also cleared on a successful preview (apply ok → refresh).
 
-## テスト
+## Tests
 
-lib 変更なし（store/UI のみ）→ 新規 lib テスト不要。ただし:
-- `npm run typecheck` / 既存テスト green を維持
-- 挙動検証は下記の実機手順で担保する
+No lib changes (store/UI only) → no new lib tests needed. However:
+- Keep `npm run typecheck` and the existing tests green
+- Behavior is covered by the manual verification steps below
 
-## 検証（実機・必須）
+## Verification (real app, required)
 
-1. `npx electron .` 起動 → Skills で任意 skill の body を編集（Save しない）
-2. 別ターミナルで同じ SKILL.md に `echo "external change" >> <path>` — バナーが新文言で出て、**エディタのドラフトが残っている** こと
-3. そのまま Save… → DiffModal の差分が「外部変更後のファイル + 自分のドラフト」ベースであること → Cancel
-4. conflict 経路: Save… でプレビューを開いたまま、外部でもう一度ファイルを変更 → Apply → conflict バナー → `Re-preview` → 差分が更新され Apply が通ること
-5. 最後に対象 skill をアプリの Backups から復元（または git で戻し）、実験痕を残さない
+1. Start with `npx electron .` → in Skills, edit the body of any skill (do not Save)
+2. In another terminal, run `echo "external change" >> <path>` on the same SKILL.md — the banner appears with the new text, and **the editor draft is still there**
+3. Press Save… as is → the DiffModal diff is based on "file after the external change + my draft" → Cancel
+4. Conflict path: with a Save… preview open, change the file externally once more → Apply → conflict banner → `Re-preview` → the diff updates and Apply succeeds
+5. Finally restore the target skill from the app's Backups (or revert with git) so no experiment traces remain
 
-## 完了条件
+## Completion criteria
 
-- [ ] 検証 1–5 pass
-- [ ] typecheck / coverage / build green（lib 100% 維持 — lib に手を入れていないので自然に維持されるはず）
-- [ ] restore プレビュー（Backups タブ）で Re-preview を押したときにクラッシュしないこと（分岐未実装なら非表示にする）
+- [ ] Verification 1–5 pass
+- [ ] typecheck / coverage / build green (lib 100% maintained — lib is untouched, so this should hold naturally)
+- [ ] Pressing Re-preview on a restore preview (Backups tab) must not crash (if the branch is not implemented, hide the button)

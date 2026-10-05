@@ -1,83 +1,83 @@
-# 05. Skill の Claude⇄Cursor 比較・同期
+# 05. Claude⇄Cursor skill comparison and sync
 
-## 背景 / 目的
+## Background / Goal
 
-同名 Skill が複数エージェントに存在し得る（実例: このマシンでは `publish-check` と `react-doctor` が `~/.claude/skills` と `~/.cursor/skills` の両方にあり、内容が乖離しうる）。同名 Skill の内容差分を検出・表示し、片方向コピーで同期できるようにする。このアプリにしかできない差別化機能。
+A skill with the same name can exist for several agents (real example: on this machine `publish-check` and `react-doctor` exist in both `~/.claude/skills` and `~/.cursor/skills`, and their contents can diverge). Detect and show content differences between same-named skills, and let the user sync them with a one-way copy. This is a differentiating feature only this app can offer.
 
-## 仕様
+## Spec
 
-### 検出
-- 対象: `kind === "skill"` かつ `readOnly === false` のエンティティ（`skills-cursor` の built-in は除外）
-- 同名 = `name`（frontmatter の name ではなくディレクトリ名由来の `tag.name` … 実装上は entityId の末尾。既存 SkillEntity では `name` に frontmatter 優先の値が入っている点に注意 — **比較キーはファイルパス由来のディレクトリ名** とする。`fileBaseName` 相当のロジックを lib に置く）
-- 内容一致の定義: 「frontmatter の name/description/version が一致」かつ「body が完全一致」。frontmatterExtras の差は無視（エージェント固有キーがあり得るため）— この定義は UI に明記する
+### Detection
+- Targets: entities with `kind === "skill"` and `readOnly === false` (built-ins under `skills-cursor` are excluded)
+- Same name = `name` (not the frontmatter name but the directory name behind `tag.name` … in the implementation, the tail of the entityId. Note that in the existing SkillEntity, `name` holds the frontmatter-preferred value — **the comparison key is the directory name derived from the file path**. Put logic equivalent to `fileBaseName` in lib)
+- Definition of identical content: "frontmatter name/description/version match" AND "body matches exactly". Differences in frontmatterExtras are ignored (agent-specific keys may exist) — this definition MUST be stated in the UI
 
 ### UI
-- SkillsView のリスト行: 同名 skill が他エージェントに存在する場合、`≡ synced`（一致・muted）または `≠ differs`（差分あり・`--warn` 色）のタグを表示
-- エディタペインに **Compare セクション**: 相手エンティティのセレクタ（同名が2つ以上あるとき）+ 差分表示（`buildDiffLines` を renderer で直接利用 — lib は純粋なので import 可）+ 2ボタン:
-  - `Copy to <相手agent>…` — このエンティティの内容で相手を上書き（upsertSkill mutation・通常の差分プレビュー経由）
-  - `Copy from <相手agent>…` — 逆方向
-- コピーは常に「name/description/version/body の全上書き」。相手側の frontmatterExtras は upsertSkill の既存挙動（updateFrontmatter = 対象キー以外保持）により **生存する**
+- SkillsView list row: if a same-named skill exists for another agent, show a tag `≡ synced` (identical, muted) or `≠ differs` (different, `--warn` color)
+- In the editor pane, a **Compare section**: a selector for the counterpart entity (when there are two or more same-named ones) + diff display (use `buildDiffLines` directly in the renderer — lib is pure, so it can be imported) + 2 buttons:
+  - `Copy to <counterpart agent>…` — overwrite the counterpart with this entity's content (upsertSkill mutation, via the normal diff preview)
+  - `Copy from <counterpart agent>…` — the reverse direction
+- A copy is always a "full overwrite of name/description/version/body". The counterpart's frontmatterExtras **survive**, because of upsertSkill's existing behavior (updateFrontmatter = keep keys other than the target keys)
 
-### スコープ
-- user スコープ同士のみ対象（project スコープの skill は除外 — 混ぜると UI が複雑になりすぎる）
-- Codex の `~/.codex/skills` も対象に含める（現在空だが形式は同じ）
+### Scope
+- Only user scope against user scope (project-scope skills are excluded — mixing them makes the UI too complex)
+- Include Codex's `~/.codex/skills` as well (currently empty, but the format is the same)
 
-## 実装手順
+## Implementation steps
 
-### 1. lib: ペアリングと比較（新規 `src/lib/skill-sync.ts`）
+### 1. lib: pairing and comparison (new `src/lib/skill-sync.ts`)
 
 ```ts
 import type { SkillEntity } from "./model/types";
 
 export interface SkillCounterpart { entity: SkillEntity; identical: boolean }
 
-/** ファイルパスからディレクトリ名（= 同期キー）を得る: "<dir>/<key>/SKILL.md" */
+/** Get the directory name (= sync key) from a file path: "<dir>/<key>/SKILL.md" */
 export function skillKey(filePath: string): string;
 
-/** 同一 user スコープ・readOnly でない skill を key でグループ化 */
+/** Group non-readOnly skills of the same user scope by key */
 export function groupSkillsByKey(skills: SkillEntity[]): Map<string, SkillEntity[]>;
 
-/** 比較: name/description/version/body の一致判定（frontmatterExtras は無視） */
+/** Compare: decide whether name/description/version/body match (frontmatterExtras ignored) */
 export function skillsIdentical(a: SkillEntity, b: SkillEntity): boolean;
 
-/** ある skill から見た他エージェントの同名 skill 一覧 */
+/** List the same-named skills of other agents, as seen from a given skill */
 export function counterpartsOf(skill: SkillEntity, all: SkillEntity[]): SkillCounterpart[];
 ```
 
-- version は `undefined` と `""` を同値扱いにする（片方に version 行が無いだけで differs にしない）
-- body は完全一致（trim しない — 末尾改行差も差分として扱い、diff 表示で見える）
+- Treat version `undefined` and `""` as equal (a missing version line on one side alone must not make it differs)
+- body is an exact match (no trim — a trailing-newline difference also counts as a difference and is visible in the diff display)
 
-### 2. renderer: SkillsView（MarkdownEntityView）拡張
+### 2. renderer: extend SkillsView (MarkdownEntityView)
 
-`MarkdownEntityView.tsx` は skill/subagent/command 共用なので、Compare セクションは `kind === "skill"` のときのみ描画する専用子コンポーネント `SkillCompare` を新設（`src/renderer/src/components/SkillCompare.tsx`）:
+`MarkdownEntityView.tsx` is shared by skill/subagent/command, so create a dedicated child component `SkillCompare` (`src/renderer/src/components/SkillCompare.tsx`) and render the Compare section only when `kind === "skill"`:
 
 - props: `{ entity: SkillEntity; all: SkillEntity[]; home: string }`
-- `counterpartsOf` で相手を列挙。0件なら「No counterpart in other agents」+ **`Copy to…` セレクタ**（未所持エージェントへの新規コピー: dirOptions 相当のリストから選ぶ → upsertSkill で新規作成）
-- 差分表示: `buildDiffLines(counterpart側の再構成テキスト, 自分側の再構成テキスト)` … 再構成は `buildFrontmatterFile({name, description, version}, body)` を両側に使い正規化して比較（生ファイル同士だと extras 差でノイズが出る）
-- コピー実行: `requestPreview({ op: "upsertSkill", dir: 相手のskillsディレクトリ, name: key, prevName: key, description: source.description, version: source.version, body: source.body })`
-  - 相手ディレクトリ: 相手エンティティがあれば `filePath` から導出（`/<key>/SKILL.md` を除去）。新規なら `${home}/.claude/skills` | `${home}/.codex/skills` | `${home}/.cursor/skills`
-- リスト行タグ: `MarkdownEntityView` のリスト描画で skill のときだけ `counterpartsOf` を引いて `≡/≠` タグを付ける（`useMemo` でエンティティ配列から一括計算し Map 化。行ごとに O(n²) にしない）
+- List counterparts with `counterpartsOf`. With 0 results, show "No counterpart in other agents" + a **`Copy to…` selector** (new copy to an agent that does not have it: choose from a list equivalent to dirOptions → create new with upsertSkill)
+- Diff display: `buildDiffLines(reconstructed text of the counterpart side, reconstructed text of my side)` … for reconstruction, normalize both sides with `buildFrontmatterFile({name, description, version}, body)` before comparing (diffing raw files would add noise from extras differences)
+- Running the copy: `requestPreview({ op: "upsertSkill", dir: counterpart's skills directory, name: key, prevName: key, description: source.description, version: source.version, body: source.body })`
+  - Counterpart directory: if the counterpart entity exists, derive it from `filePath` (strip `/<key>/SKILL.md`). If new, `${home}/.claude/skills` | `${home}/.codex/skills` | `${home}/.cursor/skills`
+- List row tag: in the list rendering of `MarkdownEntityView`, look up `counterpartsOf` only for skills and attach the `≡/≠` tag (compute in bulk from the entity array with `useMemo` and turn it into a Map. Do not make it O(n²) per row)
 
-## テスト
+## Tests
 
-`tests/skill-sync.test.ts` 新規（全関数・全分岐）:
-- `skillKey`: 通常パス / ネストの深いパス
-- `groupSkillsByKey`: user のみ・readOnly 除外・project 除外
-- `skillsIdentical`: 完全一致 / body 差 / description 差 / version undefined vs "" は一致 / version 実差
-- `counterpartsOf`: 自分自身を含まない / identical フラグ / 0件
+New `tests/skill-sync.test.ts` (all functions, all branches):
+- `skillKey`: normal path / deeply nested path
+- `groupSkillsByKey`: user only; readOnly excluded; project excluded
+- `skillsIdentical`: exact match / body difference / description difference / version undefined vs "" is a match / real version difference
+- `counterpartsOf`: does not include itself / identical flag / 0 results
 
-fixture は合成 SkillEntity を手書き（`entityId` を使い整合させる）。
+Fixtures are hand-written synthetic SkillEntity values (use `entityId` to keep them consistent).
 
-## 検証（実機）
+## Verification (real app)
 
-1. ゲート一式 green
-2. `npx electron .` → Skills → `publish-check`（Claude）に `≠` または `≡` タグが付き、Compare セクションに Cursor 側との差分が出ること
-3. **安全な往復テスト**: `~/.cursor/skills/react-doctor` を対象に、Claude→Cursor へ Copy → 差分プレビュー確認 → Apply → Cursor 側ファイルを cat で確認 → Backups から復元して原状回復
-4. 相手がいない skill（例: keihi）で「No counterpart」+ Copy to… が出ること（Apply はしない）
+1. Full gate suite green
+2. `npx electron .` → Skills → `publish-check` (Claude) gets a `≠` or `≡` tag, and the Compare section shows the diff against the Cursor side
+3. **Safe round-trip test**: with `~/.cursor/skills/react-doctor` as the target, Copy from Claude→Cursor → check the diff preview → Apply → cat the Cursor-side file to confirm → restore from Backups to return to the original state
+4. For a skill with no counterpart (e.g. keihi), "No counterpart" + Copy to… appear (do not Apply)
 
-## 完了条件
+## Completion criteria
 
-- [ ] 検証 pass（3 の原状回復まで）
-- [ ] lib 100%×4 維持（skill-sync.ts 全分岐）
-- [ ] built-in（skills-cursor）が比較・コピー対象に一切出ないこと
-- [ ] コピーで相手側の frontmatterExtras が消えないこと（テストで担保: 既存ファイルに extra キーを持つフィクスチャ）
+- [ ] Verification passes (including the restore to original state in step 3)
+- [ ] lib 100%×4 maintained (all branches of skill-sync.ts)
+- [ ] Built-ins (skills-cursor) never appear as comparison or copy targets
+- [ ] A copy does not erase the counterpart's frontmatterExtras (covered by a test: a fixture whose existing file has extra keys)

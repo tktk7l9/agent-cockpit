@@ -73,7 +73,7 @@ export function decodeBackupId(id: string): { sourcePath: string; timestamp: str
   return { sourcePath: decodeURIComponent(encoded), timestamp: stamp };
 }
 
-export function backupDirFor(userDataDir: string): string {
+function backupDirFor(userDataDir: string): string {
   return path.join(userDataDir, "backups");
 }
 
