@@ -18,7 +18,7 @@ function startsWithKey(key: (string | number)[], prefix: (string | number)[]): b
 }
 
 function kvPathOf(kv: AST.TOMLKeyValue): string[] {
-  return kv.key.keys.map((k) => (k.type === "TOMLBare" ? k.name : String((k as unknown as { value: unknown }).value)));
+  return kv.key.keys.map((k) => (k.type === "TOMLBare" ? k.name : k.value));
 }
 
 function lineStart(text: string, offset: number): number {
