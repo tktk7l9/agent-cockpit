@@ -26,6 +26,7 @@ const h = vi.hoisted(() => {
     probeHttp: null as null | ((...args: unknown[]) => Promise<unknown>),
     shellShow: [] as string[],
     shellOpen: [] as string[],
+    permissionHandler: null as null | ((wc: unknown, permission: string, cb: (granted: boolean) => void) => void),
     quit: 0,
   };
   class MockWatcher {
@@ -98,6 +99,12 @@ vi.mock("electron", () => ({
       return h.dark;
     },
     on: (event: string, cb: () => void) => h.themeEvents.set(event, cb),
+  },
+  session: {
+    defaultSession: {
+      setPermissionRequestHandler: (fn: (wc: unknown, permission: string, cb: (granted: boolean) => void) => void) =>
+        (h.permissionHandler = fn),
+    },
   },
   screen: { getAllDisplays: () => [{ workArea: { x: 0, y: 0, width: 1920, height: 1080 } }] },
   shell: { showItemInFolder: (p: string) => h.shellShow.push(p), openExternal: async (u: string) => h.shellOpen.push(u) },
@@ -197,6 +204,9 @@ describe("startup", () => {
     const prevent = vi.fn();
     win.wcEvents.get("will-navigate")?.({ preventDefault: prevent });
     expect(prevent).toHaveBeenCalled();
+    const grant = vi.fn();
+    h.permissionHandler?.({}, "media", grant);
+    expect(grant).toHaveBeenCalledWith(false);
     expect(h.watchers).toHaveLength(1);
   });
 
@@ -314,6 +324,18 @@ describe("scan / preview / apply / undo", () => {
 
     const denied = call<PreviewResult>(CHANNELS.preview, { ...WRITE(), filePath: `${h.home}/elsewhere.md` });
     expect(denied).toEqual({ ok: false, error: `path not allowed: ${h.home}/elsewhere.md` });
+  });
+
+  it("rejects a skill delete whose directory does not contain the deleted file", async () => {
+    const skillFile = writeHome(".claude/skills/a/SKILL.md", "---\nname: a\n---\n");
+    fs.mkdirSync(path.join(h.home, "Documents", "empty"), { recursive: true });
+    await boot();
+    const outside = path.join(h.home, "Documents", "empty");
+    const mutation: Mutation = { op: "deleteSkill", filePath: skillFile, skillDir: outside };
+    expect(call<PreviewResult>(CHANNELS.preview, mutation)).toEqual({ ok: false, error: `directory not allowed for: ${skillFile}` });
+    expect(call<ApplyResult>(CHANNELS.apply, mutation, {})).toEqual({ status: "error", message: `directory not allowed for: ${skillFile}` });
+    expect(fs.existsSync(skillFile)).toBe(true);
+    expect(fs.existsSync(outside)).toBe(true);
   });
 
   it("marks new files and masks secrets in the preview", async () => {

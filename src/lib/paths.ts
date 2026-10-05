@@ -1,7 +1,7 @@
 // All known config locations, derived from an injected home directory.
 // Nothing in here touches the filesystem — main executes the ScanSpec.
 
-import type { Scope, SnapshotTag } from "./model/types";
+import type { FileEdit, Scope, SnapshotTag } from "./model/types";
 
 export interface ScanFileSpec {
   path: string;
@@ -143,4 +143,14 @@ export function isPathAllowed(home: string, projectPaths: string[], path: string
   if (path.includes("..")) return false;
   if (isPathDenied(path)) return false;
   return allowedRoots(home, projectPaths).some((root) => path === root || path.startsWith(`${root}/`));
+}
+
+/**
+ * Directories an edit creates or removes must be strict ancestors of the
+ * edited file. Only the file path goes through the allowlist, so this keeps a
+ * crafted mutation from creating or removing directories anywhere else.
+ */
+export function editDirsWithinPath(edit: FileEdit): boolean {
+  const dirs = [...(edit.createDirs ?? []), ...(edit.deleteDirIfEmpty === undefined ? [] : [edit.deleteDirIfEmpty])];
+  return dirs.every((dir) => edit.path.startsWith(`${dir}/`));
 }

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, screen, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, screen, session, shell } from "electron";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -9,7 +9,7 @@ import { buildDiffLines, maskDiff } from "../lib/diff";
 import type { ProbeResult } from "../lib/mcp-probe";
 import type { FileEdit } from "../lib/model/types";
 import { mutationReadPaths, planMutation, type Mutation } from "../lib/mutations";
-import { watchPaths } from "../lib/paths";
+import { editDirsWithinPath, watchPaths } from "../lib/paths";
 import { createdDirOf, planUndo, type AppliedFile } from "../lib/undo";
 import { compareVersions } from "../lib/version";
 import { boundsVisible, type Rect } from "../lib/window-bounds";
@@ -90,6 +90,7 @@ function planFresh(mutation: Mutation): { edits: FileEdit[]; baseHashes: BaseHas
   const baseHashes: BaseHashes = {};
   for (const edit of edits) {
     checkPath(edit.path);
+    if (!editDirsWithinPath(edit)) throw new Error(`directory not allowed for: ${edit.path}`);
     baseHashes[edit.path] = hashOrNull(readTextIfExists(edit.path));
   }
   return { edits, baseHashes };
@@ -347,6 +348,8 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  // The renderer only shows local UI; it never needs camera, notifications, etc.
+  session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
   registerIpc();
   createWindow();
   restartWatcher();

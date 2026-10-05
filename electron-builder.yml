@@ -16,3 +16,12 @@ mac:
   category: public.app-category.developer-tools
   identity: null
   icon: resources/icon.icns
+# Electron fuses: the shipped binary ignores ELECTRON_RUN_AS_NODE, NODE_OPTIONS
+# and --inspect, and only loads code from app.asar. Flipping fuses breaks the
+# ad-hoc signature on arm64, so it is re-signed ad hoc afterwards.
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  onlyLoadAppFromAsar: true
+  resetAdHocDarwinSignature: true
