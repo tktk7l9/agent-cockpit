@@ -34,6 +34,12 @@ Editing these files by hand (or with a naive tool) is risky — `~/.claude.json`
 
 `~/.codex/auth.json`, `.env*` and anything credential-shaped is hard-denied at the IPC layer — the renderer can never read it.
 
+### What leaves your machine, and what runs on it
+
+- **Test connection** (MCP tab) runs the server exactly as the agent would: for a stdio server it spawns the configured `command` with its `args` and `env` and sends one `initialize` request, then stops it (SIGTERM, SIGKILL after 2 s); for a remote server it POSTs `initialize` to the configured http(s) `url` with the configured headers. Nothing runs until you press Test, and only one test runs at a time. Treat a command you did not write with the same care as running it in a terminal.
+- **Check for updates** (Settings) fetches `https://api.github.com/repos/tktk7l9/agent-cockpit/releases/latest` and compares the tag. It never downloads or installs anything; "Open releases" opens that fixed GitHub page in the browser.
+- Nothing else makes a network request. Config files are read and written locally; the renderer is sandboxed with `contextIsolation`, no Node integration, a strict CSP and no remote content.
+
 Note: if an agent process rewrites its own config at the exact moment you apply, last writer wins — the conflict check closes the preview→apply window, not concurrent writes after apply.
 
 ## Install

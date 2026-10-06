@@ -1,0 +1,3 @@
+# Synthetic test fixture (a plugin key string in tests/search.test.ts), flagged by the
+# generic-api-key rule in an earlier revision. Fixtures in this repo are never real values.
+40eb1c56b25733129556e818abc5a79fffce7516:tests/search.test.ts:generic-api-key:137

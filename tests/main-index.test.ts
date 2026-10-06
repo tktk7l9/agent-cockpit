@@ -540,6 +540,15 @@ describe("reveal / mcp test / update check", () => {
       detail: "url is required",
       elapsedMs: 0,
     });
+    const httpProbe = vi.fn(async () => ({ ok: true, phase: "http", detail: "", elapsedMs: 1 }));
+    h.probeHttp = httpProbe;
+    expect(await call<Promise<unknown>>(CHANNELS.mcpTest, { name: "a", transport: "http", url: "file:///etc/hosts" })).toEqual({
+      ok: false,
+      phase: "http",
+      detail: "url must start with http:// or https://",
+      elapsedMs: 0,
+    });
+    expect(httpProbe).not.toHaveBeenCalled();
     let finish: (v: unknown) => void = () => {};
     h.probeHttp = () => new Promise((resolve) => (finish = resolve));
     const first = call<Promise<unknown>>(CHANNELS.mcpTest, { name: "a", transport: "http", url: "https://x.test" });

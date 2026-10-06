@@ -255,6 +255,10 @@ function registerIpc(): void {
       if (!input.url || input.url.trim() === "") {
         return { ok: false, phase: "http", detail: "url is required", elapsedMs: 0 };
       }
+      // Same rule as validate.ts, enforced here too: the probe must never fetch file:, data: etc.
+      if (!/^https?:\/\//i.test(input.url.trim())) {
+        return { ok: false, phase: "http", detail: "url must start with http:// or https://", elapsedMs: 0 };
+      }
       return await probeHttp(input.url, input.headers ?? {}, timeoutMs);
     } finally {
       mcpTestInFlight = false;
