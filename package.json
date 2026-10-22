@@ -1,6 +1,6 @@
 {
   "name": "agent-cockpit",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Desktop control panel for AI coding agent configuration — MCP servers, skills, subagents, plugins and settings across Claude Code, Codex and Cursor.",
   "author": "tktk7l9",
   "license": "MIT",
