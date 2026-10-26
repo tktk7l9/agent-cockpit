@@ -95,6 +95,8 @@ describe("validate", () => {
     expect(validateMcpInput({ name: "a", transport: "stdio", command: "c", env: { " ": "x" } })).toHaveLength(1);
     expect(validateMcpInput({ name: "a", transport: "http", url: "https://x", headers: { "": "v" } })).toHaveLength(1);
     expect(validateMcpInput({ name: "a", transport: "stdio", command: "c", startupTimeoutSec: 0 })).toHaveLength(1);
+    expect(validateMcpInput({ name: "a", transport: "stdio", command: "c", startupTimeoutSec: Infinity })).toHaveLength(1);
+    expect(validateMcpInput({ name: "a", transport: "stdio", command: "c", startupTimeoutSec: Number.NaN })).toHaveLength(1);
     expect(validateMcpInput({ name: "a", transport: "stdio", command: "c", startupTimeoutSec: 5 })).toEqual([]);
   });
 
