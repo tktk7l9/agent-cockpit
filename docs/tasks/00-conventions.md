@@ -79,7 +79,7 @@ Commit convention: at least 1 commit per task; the message is an English summary
 
 | Pitfall | Fix |
 |---|---|
-| electron-vite 5 does not support vite 8 | vite is pinned to ^7. **Do not upgrade vite to 8**. Keep @vitejs/plugin-react on the ^4.7 line too |
+| electron-vite 5 did not support vite 8 | Resolved: electron-vite 6 and @vitejs/plugin-react 5 both peer-depend on vite ^8, so the Dependabot ignore for vite was removed (2026-10-26). A vite major bump arrives as an `npm-major` Dependabot PR and is gated by CI; verify `npm run dev` and `npm run build` before merging it |
 | A sandboxed preload cannot be ESM | The preload is a CJS build (format: "cjs" is set in electron.vite.config.ts). Do not change it |
 | chokidar v5 does not support globs | Watch only the explicit paths returned by `watchPaths()`. Do not pass glob patterns |
 | CSP conflicts with dev mode | Inject CSP only in production builds (inject-csp plugin). Do not write a CSP meta directly in index.html |

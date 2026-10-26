@@ -50,6 +50,12 @@ const RELEASES_LATEST_URL = "https://github.com/tktk7l9/agent-cockpit/releases/l
 const GITHUB_LATEST_RELEASE_API = "https://api.github.com/repos/tktk7l9/agent-cockpit/releases/latest";
 const UPDATE_CHECK_TIMEOUT_MS = 10_000;
 
+/** First finite positive candidate in seconds, else the default; Infinity or NaN would make a probe never time out. */
+function resolveProbeTimeoutMs(...candidates: (number | undefined)[]): number {
+  const sec = candidates.find((c) => typeof c === "number" && Number.isFinite(c) && c > 0) ?? DEFAULT_MCP_TEST_TIMEOUT_SEC;
+  return sec * 1000;
+}
+
 function userData(): string {
   return app.getPath("userData");
 }
@@ -239,7 +245,7 @@ function registerIpc(): void {
     }
     mcpTestInFlight = true;
     try {
-      const timeoutMs = (timeoutSec ?? input.startupTimeoutSec ?? DEFAULT_MCP_TEST_TIMEOUT_SEC) * 1000;
+      const timeoutMs = resolveProbeTimeoutMs(timeoutSec, input.startupTimeoutSec);
       if (input.transport === "stdio") {
         if (!input.command || input.command.trim() === "") {
           return { ok: false, phase: "spawn", detail: "command is required", elapsedMs: 0 };
