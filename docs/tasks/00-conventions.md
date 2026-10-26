@@ -81,7 +81,8 @@ Commit convention: at least 1 commit per task; the message is an English summary
 |---|---|
 | electron-vite 5 did not support vite 8 | Resolved (2026-10-27): on vite 8 + @vitejs/plugin-react 6 (peer vite ^8) with electron-vite 6 (peer vite ^6\|\|^7\|\|^8). vite 8 bundles with Rolldown; `rollupOptions` in electron.vite.config.ts still works. After a vite bump, check that out/main and out/preload stay CommonJS and that the CSP meta in out/renderer/index.html is unchanged |
 | A sandboxed preload cannot be ESM | The preload is a CJS build (format: "cjs" is set in electron.vite.config.ts). Do not change it |
-| chokidar v5 does not support globs | Watch only the explicit paths returned by `watchPaths()`. Do not pass glob patterns |
+| chokidar (v5+) does not support globs | Watch only the explicit paths returned by `watchPaths()`. Do not pass glob patterns |
+| chokidar 6 emits watch failures as `error` events (Node >= 22.22, `close()` is terminal) | Keep the `error` listener in `restartWatcher()`: an EventEmitter `error` with no listener throws in the main process. Always build a new watcher after `close()`; never `add()` to a closed one |
 | CSP conflicts with dev mode | Inject CSP only in production builds (inject-csp plugin). Do not write a CSP meta directly in index.html |
 | macOS `/var` is a symlink to `/private/var` | Path comparison is handled by `resolveAndCheck` (fs-gateway.ts), which compares realpaths on both sides. Do the same when writing new path validation |
 | Backup timestamp collisions | Consecutive writes within the same ms are avoided with `-1` `-2` suffixes (writeBackup) |

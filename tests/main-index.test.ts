@@ -30,11 +30,11 @@ const h = vi.hoisted(() => {
     quit: 0,
   };
   class MockWatcher {
-    listeners = new Map<string, () => void>();
+    listeners = new Map<string, (...args: unknown[]) => void>();
     closed = false;
     paths: string[] = [];
-    options: { ignored: (p: string) => boolean } = { ignored: () => false };
-    on(event: string, cb: () => void): this {
+    options: { ignored: (p: string) => boolean; ignorePermissionErrors?: boolean } = { ignored: () => false };
+    on(event: string, cb: (...args: unknown[]) => void): this {
       this.listeners.set(event, cb);
       return this;
     }
@@ -112,7 +112,7 @@ vi.mock("electron", () => ({
 
 vi.mock("chokidar", () => ({
   default: {
-    watch: (paths: string[], options: { ignored: (p: string) => boolean }) => {
+    watch: (paths: string[], options: { ignored: (p: string) => boolean; ignorePermissionErrors?: boolean }) => {
       const w = new h.MockWatcher();
       w.paths = paths;
       w.options = options;
@@ -286,6 +286,22 @@ describe("watcher", () => {
     expect(watcher.options.ignored(path.join(h.home, ".codex", "auth.json"))).toBe(true);
     expect(watcher.options.ignored(path.join(h.home, ".claude", ".env.local"))).toBe(true);
     expect(watcher.options.ignored(path.join(h.home, ".claude", "settings.json"))).toBe(false);
+    expect(watcher.options.ignorePermissionErrors).toBe(true);
+  });
+
+  it("logs watcher errors instead of crashing and does not notify the renderer", async () => {
+    await boot();
+    vi.useFakeTimers();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const watcher = h.watchers[0] as InstanceType<typeof h.MockWatcher>;
+    const onError = watcher.listeners.get("error");
+    expect(onError).toBeTypeOf("function");
+    const err = new Error("EMFILE: too many open files");
+    expect(() => onError?.(err)).not.toThrow();
+    expect(warn).toHaveBeenCalledWith("file watcher error:", err);
+    vi.advanceTimersByTime(300);
+    expect((h.windows[0] as InstanceType<typeof h.MockWindow>).sent).toEqual([]);
+    warn.mockRestore();
   });
 
   it("debounces change notifications into one renderer event", async () => {
