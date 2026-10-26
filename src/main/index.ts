@@ -74,9 +74,15 @@ function restartWatcher(): void {
   watcher = chokidar.watch(watchPaths(HOME, currentProjects()), {
     ignoreInitial: true,
     depth: 2,
+    // A project under a TCC-protected folder can raise EPERM; skip it instead of failing.
+    ignorePermissionErrors: true,
     ignored: (p: string) => path.basename(p) === "auth.json" || path.basename(p).startsWith(".env"),
   });
   watcher.on("all", notifyChanged);
+  // chokidar 6 reports watch failures as "error" events; an EventEmitter error
+  // without a listener throws in the main process. Watching is best-effort
+  // (the user can still rescan), so log and keep running.
+  watcher.on("error", (err: unknown) => console.warn("file watcher error:", err));
 }
 
 function planFresh(mutation: Mutation): { edits: FileEdit[]; baseHashes: BaseHashes } {
