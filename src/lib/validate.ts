@@ -23,7 +23,7 @@ export function validateMcpInput(input: McpInput): string[] {
   for (const key of Object.keys(input.headers ?? {})) {
     if (key.trim() === "") errors.push("header names must not be empty");
   }
-  if (input.startupTimeoutSec !== undefined && !(input.startupTimeoutSec > 0)) {
+  if (input.startupTimeoutSec !== undefined && !(Number.isFinite(input.startupTimeoutSec) && input.startupTimeoutSec > 0)) {
     errors.push("startup timeout must be a positive number of seconds");
   }
   return errors;

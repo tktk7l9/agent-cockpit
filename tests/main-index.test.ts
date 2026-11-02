@@ -520,6 +520,13 @@ describe("reveal / mcp test / update check", () => {
     expect(stdioArgs[1]).toEqual(["npx", [], {}, 3000, []]);
     await call<Promise<unknown>>(CHANNELS.mcpTest, { name: "a", transport: "stdio", command: "npx", startupTimeoutSec: 3 }, 7);
     expect(stdioArgs[2]?.[3]).toBe(7000);
+    // Infinity, NaN and non-positive timeouts fall back to the next candidate or the default instead of disabling the timeout.
+    await call<Promise<unknown>>(CHANNELS.mcpTest, { name: "a", transport: "stdio", command: "npx", startupTimeoutSec: Infinity });
+    expect(stdioArgs[3]?.[3]).toBe(10_000);
+    await call<Promise<unknown>>(CHANNELS.mcpTest, { name: "a", transport: "stdio", command: "npx", startupTimeoutSec: 3 }, Number.NaN);
+    expect(stdioArgs[4]?.[3]).toBe(3000);
+    await call<Promise<unknown>>(CHANNELS.mcpTest, { name: "a", transport: "stdio", command: "npx", startupTimeoutSec: -1 }, 0);
+    expect(stdioArgs[5]?.[3]).toBe(10_000);
     await call<Promise<unknown>>(CHANNELS.mcpTest, { name: "a", transport: "http", url: "https://x.test", headers: { A: "b" } });
     expect(httpArgs[0]).toEqual(["https://x.test", { A: "b" }, 10_000]);
     await call<Promise<unknown>>(CHANNELS.mcpTest, { name: "a", transport: "sse", url: "https://y.test" });
