@@ -73,7 +73,7 @@ npm audit            # Keep at 0 findings
 npx electron .       # Launch the production build (after build)
 ```
 
-Commit convention: at least 1 commit per task; the message is an English summary + free-form body. Set the `Co-Authored-By:` line to match the model that implemented it. CI (.github/workflows/ci.yml) runs on push: typecheck → coverage → build → audit (ubuntu) + dmg (macos-14, main only).
+Commit convention: at least 1 commit per task; the message is an English summary + free-form body. Set the `Co-Authored-By:` line to match the model that implemented it. CI (.github/workflows/ci.yml) runs on push: typecheck → coverage → build → audit (ubuntu) + dmg (macos-15, main only).
 
 ## 5. Known pitfalls (actually hit in a previous session)
 
